@@ -1,5 +1,5 @@
 'use strict';
-importScripts('core.js', 'translation.js');
+importScripts('core.js', 'translation.js', 'speech.js');
 
 const dictionary = WordLensCore.createDictionary(async key => {
   const response = await fetch(chrome.runtime.getURL(`data/${key}.json.gz`));
@@ -10,6 +10,7 @@ const dictionary = WordLensCore.createDictionary(async key => {
 });
 
 const translator = WordLensTranslation.createTranslator();
+const speech = WordLensSpeech.createSpeech(chrome.tts, chrome.runtime);
 async function lookupText(value) {
   const input = WordLensCore.normalizeText(value);
   if (!input) return { status: 'invalid', message: '请选择英文单词、短语或句子（最多 2000 个字符）。' };
@@ -29,29 +30,16 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 async function speak(word) {
   const settings = WordLensCore.sanitizeSettings((await chrome.storage.local.get('settings')).settings);
-  const voices = await new Promise(resolve => chrome.tts.getVoices(resolve));
-  const english = voices.filter(voice => /^en(?:-|$)/i.test(voice.lang || '') && !voice.remote && !voice.extensionId);
-  const voice = english.find(item => item.lang?.toLowerCase() === settings.accent.toLowerCase()) || english[0];
-  if (!voice) return { status: 'error', message: '没有可用的本地英语语音，请在系统设置中安装英语语音包。' };
-  return new Promise(resolve => {
-    let finished = false;
-    const finish = result => { if (!finished) { finished = true; clearTimeout(timer); resolve(result); } };
-    const timer = setTimeout(() => finish({ status: 'error', message: '发音引擎未响应，请稍后重试。' }), 12000);
-    chrome.tts.speak(word, {
-      voiceName: voice.voiceName, lang: voice.lang, rate: 0.85, enqueue: false,
-      onEvent: event => {
-        if (event.type === 'start' || event.type === 'end') finish({ status: 'ok', accent: voice.lang });
-        if (event.type === 'error') finish({ status: 'error', message: '发音失败，请检查系统英语语音包。' });
-        if (event.type === 'cancelled' || event.type === 'interrupted') finish({ status: 'ok' });
-      }
-    }, () => {
-      if (chrome.runtime.lastError) finish({ status: 'error', message: '无法使用本地发音引擎，请检查英语语音包。' });
-    });
-  });
+  return speech.speak(word, settings.accent);
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (sender.id !== chrome.runtime.id || !message || typeof message !== 'object') return false;
+  if (message.type === 'voice-status') {
+    chrome.storage.local.get('settings').then(({ settings }) => speech.status(WordLensCore.sanitizeSettings(settings).accent))
+      .then(sendResponse).catch(() => sendResponse({ status: 'error', message: '语音检查失败，请重新加载插件。' }));
+    return true;
+  }
   if (!['lookup', 'speak'].includes(message.type)) return false;
   const input = WordLensCore.normalizeText(message.word);
   if (!input) { sendResponse({ status: 'invalid', message: '请选择英文单词、短语或句子（最多 2000 个字符）。' }); return false; }

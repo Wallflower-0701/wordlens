@@ -20,7 +20,7 @@ Chrome / Microsoft Edge 浏览器扩展。选中英文单词、短语或句子�
 
 ### 使用安装包
 
-1. 从 [Releases](../../releases) 下载 `WordLens-1.1.1.zip`，全部解压到固定目录。
+1. 从 [Releases](../../releases) 下载 `WordLens-1.1.2.zip`，全部解压到固定目录。
 2. 打开 `edge://extensions` 或 `chrome://extensions`，开启**开发者模式**。
 3. 点击**加载已解压的扩展程序**，选择包含 `manifest.json` 的 **wordlens** 文件夹。
 4. 刷新已打开的网页，再双击单词或拖选短语、句子。
@@ -41,6 +41,14 @@ Chrome / Microsoft Edge 浏览器扩展。选中英文单词、短语或句子�
 
 短语有词典音标时显示音标；句子提供翻译和英语朗读。朗读需要系统安装本地英语语音包，音标不会随口音偏好变化。
 
+### 浏览器没有识别到本地英语语音
+
+在 Windows 打开**设置 → 时间和语言 → 语音 → 管理语音 → 添加语音**，选择**英语（美国）**或**英语（英国）**，等待下载完成，再彻底退出并重新打开 Edge / Chrome。在插件面板点击**重新检查**与**测试发音**。浏览器仍在后台运行时，可从任务栏通知区域退出，或重启电脑。
+
+已有 **Microsoft Zira Desktop** 不一定代表浏览器能使用英语：Chromium 在 Windows 优先读取现代 OneCore 语音目录，旧 SAPI 目录中的语音可能不会列出。只安装英语键盘或语音识别也不等于安装了英语文本转语音。参见[微软安装说明](https://support.microsoft.com/en-us/accessibility/windows/narrator/appendix-a-supported-languages-and-voices)与[Chromium 语音实现](https://github.com/chromium/chromium/blob/main/content/browser/speech/tts_win.cc)。
+
+1.1.2 会重试尚未初始化的语音列表，支持明确标记为本地的扩展语音引擎，并区分列表读取失败与没有英语语音。扩展不会自动改用在线语音服务。
+
 ## 网络与隐私
 
 单词和已收录短语完全离线查询。联网翻译默认开启，可在面板关闭；未收录的短语和句子通过 [MyMemory](https://mymemory.translated.net/doc/spec.php) 翻译，**只发送选中或输入的文字**，不发送整页、网页地址、周围上下文或 Cookie。
@@ -54,7 +62,7 @@ MyMemory 有免费使用限额，网络不可用、超时或额度用尽时会�
 ## 项目结构
 
 - `extension/`：可直接加载的 Manifest V3 扩展，包含完整压缩词库。
-- `tests/`：Node.js 核心与翻译适配器测试。
+- `tests/`：Node.js 核心、翻译与本地语音适配器测试。
 - `scripts/package.py`：生成与 Releases 相同结构的安装 ZIP。
 - `docs/images/`：功能示例截图。
 
@@ -70,7 +78,7 @@ npm test
 python scripts/package.py
 ```
 
-输出到 `dist/WordLens-1.1.1.zip`。
+输出到 `dist/WordLens-1.1.2.zip`。
 
 ## 数据来源与授权
 

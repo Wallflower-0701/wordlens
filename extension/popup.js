@@ -37,6 +37,34 @@ document.getElementById('file-access-settings').addEventListener('click', () => 
   chrome.tabs.create({ url: `${scheme}://extensions/?id=${chrome.runtime.id}` });
 });
 
+const voiceStatus = document.getElementById('voice-status');
+const voiceHint = document.getElementById('voice-hint');
+const voiceCheck = document.getElementById('voice-check');
+const voiceTest = document.getElementById('voice-test');
+async function checkVoice() {
+  voiceCheck.disabled = true;
+  voiceStatus.textContent = '正在检查本地英语语音…';
+  try {
+    const result = await chrome.runtime.sendMessage({ type: 'voice-status' });
+    voiceStatus.textContent = result.status === 'ok' ? `本地英语语音：${result.voiceName}` : (result.status === 'unavailable' ? '本地英语语音：浏览器未识别到' : '本地英语语音：检查失败');
+    voiceHint.hidden = result.status === 'ok';
+    voiceHint.textContent = result.message || '';
+  } catch {
+    voiceStatus.textContent = '语音检查失败，请重新加载插件。';
+  } finally { voiceCheck.disabled = false; }
+}
+voiceCheck.addEventListener('click', checkVoice);
+voiceTest.addEventListener('click', async () => {
+  voiceTest.disabled = true;
+  setStatus('正在测试本地英语语音…');
+  try {
+    const result = await chrome.runtime.sendMessage({ type: 'speak', word: 'Hello. Welcome to WordLens.' });
+    setStatus(result.status === 'ok' ? `已调用 ${result.voiceName}；请确认是否听到英语。` : result.message, result.status !== 'ok');
+  } catch { setStatus('发音测试失败，请重新加载插件。', true); }
+  finally { voiceTest.disabled = false; }
+});
+checkVoice();
+
 function element(tag, className, text) {
   const node = document.createElement(tag); node.className = className;
   if (text !== undefined) node.textContent = text;
