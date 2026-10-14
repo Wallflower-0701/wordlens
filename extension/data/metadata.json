@@ -1,0 +1,12 @@
+{
+  "source": "https://github.com/skywind3000/ECDICT",
+  "source_file": "ecdict.csv",
+  "source_sha256": "1a6947e04785db63613a92e14903cdae7954f7e84860b10e68e5c7cbb3f9c3cf",
+  "license": "MIT (see ECDICT-LICENSE.txt)",
+  "entries": 757041,
+  "word_entries": 399213,
+  "phrase_entries": 357828,
+  "inflection_aliases": 265,
+  "format": "gzip-compressed UTF-8 JSON shards; [word, phonetic, Chinese translation] or base-form key",
+  "filter": "English words and phrases, including internal apostrophes and hyphens; maximum 160 characters; Chinese definition required."
+}

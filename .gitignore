@@ -1,0 +1,10 @@
+node_modules/
+.cache/
+dist/
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+*.log
+__pycache__/

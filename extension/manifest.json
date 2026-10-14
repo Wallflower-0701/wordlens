@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "WordLens 划词词典",
+  "version": "1.1.1",
+  "description": "选中英文单词、短语或句子，查看音标、释义与中文翻译。单词和已收录短语离线查询，整句可联网翻译。",
+  "minimum_chrome_version": "114",
+  "permissions": ["storage", "tts"],
+  "host_permissions": ["https://api.mymemory.translated.net/*"],
+  "background": { "service_worker": "background.js" },
+  "action": {
+    "default_title": "WordLens 划词词典",
+    "default_popup": "popup.html",
+    "default_icon": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" }
+  },
+  "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
+  "content_scripts": [{
+    "matches": ["http://*/*", "https://*/*", "file:///*"],
+    "js": ["core.js", "content.js"],
+    "all_frames": true,
+    "match_about_blank": true,
+    "run_at": "document_idle"
+  }],
+  "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'self' https://api.mymemory.translated.net" }
+}
