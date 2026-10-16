@@ -1,5 +1,9 @@
 'use strict';
-importScripts('core.js', 'translation.js', 'speech.js');
+importScripts('core.js', 'translation.js', 'speech.js', 'selection-menu.js');
+
+const selectionMenu = WordLensSelectionMenu.createSelectionMenu(chrome, WordLensCore);
+chrome.contextMenus.onClicked.addListener(info => { selectionMenu.open(info).catch(() => {}); });
+chrome.runtime.onStartup.addListener(() => { selectionMenu.register().catch(() => {}); });
 
 const dictionary = WordLensCore.createDictionary(async key => {
   const response = await fetch(chrome.runtime.getURL(`data/${key}.json.gz`));
@@ -49,6 +53,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 chrome.runtime.onInstalled.addListener(async details => {
+  await selectionMenu.register();
   if (details.reason !== 'install') return;
   const current = await chrome.storage.local.get('settings');
   if (!current.settings) await chrome.storage.local.set({ settings: WordLensCore.DEFAULTS });

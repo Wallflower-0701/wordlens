@@ -8,6 +8,8 @@ Chrome / Microsoft Edge 浏览器扩展。选中英文单词、短语或句子�
 - **短语**：优先查询内置短语词库，未收录时可联网翻译。
 - **句子**：英文 → 简体中文翻译及本地英语朗读，单次最多 2000 字符。
 - **本地 HTML**：支持 `file:///` 文件，需在扩展详情开启“允许访问文件 URL”。
+- **本地文档**：在插件面板点击“打开本地文档”，支持 PPTX、PDF、Word（DOCX）、TXT、Markdown、CSV 等文字阅读与划词。
+- **右键查词**：在提供扩展右键菜单的页面上，选中文字后右键选择“用 WordLens 查词 / 翻译所选文字”。
 - 支持 Alt + 选中、关闭自动浮窗、工具栏手动查询和英美口音偏好。
 
 内置 **399,213 个单词、357,828 个短语**，无需构建、账号或 API Key。
@@ -16,11 +18,13 @@ Chrome / Microsoft Edge 浏览器扩展。选中英文单词、短语或句子�
 
 ![句子翻译示例](docs/images/sentence.png)
 
+![本地文档文字阅读与划词](docs/images/local-document.png)
+
 ## 安装
 
 ### 使用安装包
 
-1. 从 [Releases](../../releases) 下载 `WordLens-1.1.2.zip`，全部解压到固定目录。
+1. 从 [Releases](../../releases) 下载 `WordLens-1.2.0.zip`，全部解压到固定目录。
 2. 打开 `edge://extensions` 或 `chrome://extensions`，开启**开发者模式**。
 3. 点击**加载已解压的扩展程序**，选择包含 `manifest.json` 的 **wordlens** 文件夹。
 4. 刷新已打开的网页，再双击单词或拖选短语、句子。
@@ -41,13 +45,32 @@ Chrome / Microsoft Edge 浏览器扩展。选中英文单词、短语或句子�
 
 短语有词典音标时显示音标；句子提供翻译和英语朗读。朗读需要系统安装本地英语语音包，音标不会随口音偏好变化。
 
+### 在 Edge 中阅读本地 PPT / PDF / Word
+
+1. 点击工具栏的 **WordLens → 打开本地文档**。
+2. 在阅读器中再次点击 **打开本地文档**，选择电脑中的文件。阅读器的文件选择不需要开启“允许访问文件 URL”。
+3. 双击单词或拖选英文短语、句子；PPTX / PDF 可翻页或按页码跳转。
+
+| 文件 | 支持方式 |
+| --- | --- |
+| PPTX | 按演示文稿顺序提取每页文字，包括文字型表格；保留无文字页的位置 |
+| PDF | 按页提取文字；可使用随附 PDF 示例试读 |
+| DOCX | 按段落与表格中的文字顺序阅读，不推测 Word 的分页 |
+| TXT、MD、CSV、TSV、LOG、JSON、XML、TEX | UTF-8 或带 BOM 的 UTF-16 纯文本阅读 |
+| 旧版 PPT / DOC | 请先在 PowerPoint / Word / WPS 中另存为 PPTX / DOCX，或导出为含文字的 PDF |
+| XLSX / XLS、ODP / ODT 等 | 请先导出为 CSV 或含文字的 PDF |
+
+这是**文字阅读版**，图片、复杂公式、版式及原文的多栏阅读顺序可能无法保留。扫描 PDF、图片中的文字暂不做 OCR；没有可提取文字时会明确提示。暂不支持加密文档，单文件最大 50 MB，PPTX / PDF 最多 2000 页；内容过多时请拆分。
+
+Edge 内置 PDF 查看器或网页 Office 查看器可能不允许注入浮窗。请使用上述插件阅读器；原页面如果提供扩展右键菜单，也可以选中文字后右键查词。原有文档不会被修改。
+
 ### 浏览器没有识别到本地英语语音
 
 在 Windows 打开**设置 → 时间和语言 → 语音 → 管理语音 → 添加语音**，选择**英语（美国）**或**英语（英国）**，等待下载完成，再彻底退出并重新打开 Edge / Chrome。在插件面板点击**重新检查**与**测试发音**。浏览器仍在后台运行时，可从任务栏通知区域退出，或重启电脑。
 
 已有 **Microsoft Zira Desktop** 不一定代表浏览器能使用英语：Chromium 在 Windows 优先读取现代 OneCore 语音目录，旧 SAPI 目录中的语音可能不会列出。只安装英语键盘或语音识别也不等于安装了英语文本转语音。参见[微软安装说明](https://support.microsoft.com/en-us/accessibility/windows/narrator/appendix-a-supported-languages-and-voices)与[Chromium 语音实现](https://github.com/chromium/chromium/blob/main/content/browser/speech/tts_win.cc)。
 
-1.1.2 会重试尚未初始化的语音列表，支持明确标记为本地的扩展语音引擎，并区分列表读取失败与没有英语语音。扩展不会自动改用在线语音服务。
+语音检查会重试尚未初始化的语音列表，支持明确标记为本地的扩展语音引擎，并区分列表读取失败与没有英语语音。扩展不会自动改用在线语音服务。
 
 ## 网络与隐私
 
@@ -55,20 +78,23 @@ Chrome / Microsoft Edge 浏览器扩展。选中英文单词、短语或句子�
 
 MyMemory 有免费使用限额，网络不可用、超时或额度用尽时会明确提示。第三方服务的数据处理规则以其条款为准。扩展不保存查词历史，无跟踪或分析统计；少量翻译缓存只存在后台内存，关闭联网翻译会清除缓存并取消未完成请求。
 
+本地文档由随扩展附带的解析代码在本机读取，**不上传整份文件**，不执行文档脚本或加载文档中的外部链接。仅查询文字可能交给可关闭的联网翻译。右键查询通过扩展会话存储临时传递所选文字，读取后立即删除，超过两分钟视为过期，不把文字放进地址栏；不持久保存。
+
 ## 兼容性与限制
 
-支持 Chrome / Edge 114+ 的普通网页、本地 HTML 和允许内容脚本运行的 iframe。输入框和富文本编辑区域不会触发浮窗。浏览器设置页、扩展商店、内置 PDF 阅读器、扫描图片和 Canvas 文字不支持直接划词，可使用面板手动查询。
+网页划词支持 Chrome / Edge 114+ 的普通网页、本地 HTML 和允许内容脚本运行的 iframe；本地文档阅读建议使用当前版本的 Edge / Chrome。输入框和富文本编辑区域不会触发浮窗。浏览器设置页、扩展商店、内置 PDF 阅读器和 Canvas 文字不支持直接注入浮窗，可使用插件阅读器、可用的扩展右键菜单或面板手动查询。
 
 ## 项目结构
 
 - `extension/`：可直接加载的 Manifest V3 扩展，包含完整压缩词库。
-- `tests/`：Node.js 核心、翻译与本地语音适配器测试。
+- `tests/`：Node.js 核心、翻译、本地语音、文档解析和右键查询测试。
 - `scripts/package.py`：生成与 Releases 相同结构的安装 ZIP。
 - `docs/images/`：功能示例截图。
 
-开发验证（Node.js 20+）：
+开发验证（Node.js 22.13+，建议 Node.js 24）：
 
 ```sh
+npm ci --ignore-scripts
 npm test
 ```
 
@@ -78,10 +104,12 @@ npm test
 python scripts/package.py
 ```
 
-输出到 `dist/WordLens-1.1.2.zip`。
+输出到 `dist/WordLens-1.2.0.zip`。用户安装插件不需要这些开发依赖。
 
 ## 数据来源与授权
 
 扩展源码采用 [MIT License](LICENSE)。英汉词库来自 [skywind3000/ECDICT](https://github.com/skywind3000/ECDICT)，上游授权完整保存在 [ECDICT-LICENSE.txt](extension/ECDICT-LICENSE.txt)。词库条目数量、格式与原始文件 SHA-256 见 [metadata.json](extension/data/metadata.json)。
 
 词典按前两个字母拆分并 gzip 压缩，仅按需解压相关分片。
+
+PDF 提取使用本地附带的 Mozilla PDF.js 6.4.299（Apache-2.0），其许可、CMap 和字体许可完整保留。参见 [第三方声明](extension/THIRD_PARTY_NOTICES.md)。

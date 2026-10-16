@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>WordLens 本地文档阅读器</title><link rel="stylesheet" href="reader.css"></head>
+<body>
+  <header><a class="brand" href="guide.html"><img src="icons/48.png" width="32" height="32" alt="">WordLens</a><span>本地文档阅读器</span><button id="open-file" type="button">打开本地文档</button><input id="file" type="file" accept=".pptx,.docx,.pdf,.txt,.md,.csv,.tsv,.log,.json,.xml,.tex" hidden></header>
+  <main>
+    <section id="welcome" class="welcome"><div class="eyebrow">READ WITH CURIOSITY</div><h1>课件里的生词，<br>也能随手查。</h1><p>打开 PPTX、PDF、Word（DOCX）或文本文件，<br>双击英文单词，或拖选短语与句子。</p><p class="muted">文档在本机提取文字，不上传整份文件。<br>这里呈现文字阅读版，原有图片、公式和排版可能无法保留。<br>旧版 .ppt / .doc 请先另存为 .pptx / .docx；扫描图片暂不支持。</p><button id="open-example" type="button" class="secondary">试读示例</button></section>
+    <div id="message" role="status" aria-live="polite"></div>
+    <section id="document" hidden>
+      <div class="document-heading"><h1 id="file-name"></h1><span id="mode-label">文字阅读版 · 选中即查</span></div>
+      <nav aria-label="文档翻页"><button id="previous" type="button">← 上一页</button><label>转到 <select id="page" aria-label="转到页面"></select></label><span id="page-count"></span><button id="next" type="button">下一页 →</button></nav>
+      <article id="page-content" aria-label="文档正文" tabindex="0"></article>
+      <p class="footnote">单词与已收录短语离线查询。联网翻译开启时，仅将选中的文字发送至 MyMemory。发音使用本地英语语音。<a href="popup.html" target="_blank">查词与设置 ↗</a></p>
+    </section>
+  </main>
+  <script src="core.js"></script><script src="content.js"></script><script src="documents.js"></script><script src="reader.js" type="module"></script>
+</body>
+</html>

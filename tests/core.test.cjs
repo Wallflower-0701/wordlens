@@ -54,7 +54,7 @@ test('failed reads can retry, cyclic aliases terminate and inherited keys never 
 test('manifest uses local code and permits only the fixed translation API', async () => {
   const manifest = JSON.parse(await fs.readFile(path.join(root, 'manifest.json')));
   assert.equal(manifest.manifest_version, 3);
-  assert.deepEqual(manifest.permissions, ['storage', 'tts']);
+  assert.deepEqual(manifest.permissions, ['storage', 'tts', 'contextMenus']);
   assert.deepEqual(manifest.host_permissions, ['https://api.mymemory.translated.net/*']);
   assert.ok(manifest.content_scripts[0].matches.includes('file:///*'));
   const files = [manifest.background.service_worker, manifest.action.default_popup,

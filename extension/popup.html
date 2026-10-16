@@ -6,6 +6,7 @@
   <main>
     <form id="search-form" class="search" role="search"><label class="sr-only" for="query">输入英文单词、短语或句子（最多 2000 个字符）</label><textarea id="query" autocomplete="off" spellcheck="false" rows="2" placeholder="输入英文单词、短语或句子（最多 2000 字符）…" autofocus></textarea><button type="submit" aria-label="查询或翻译">查询</button></form>
     <section id="search-result" class="search-result" aria-live="polite" hidden></section>
+    <section class="local-help" aria-label="本地文档阅读器"><strong>在课件和文档中划词</strong><button id="open-reader" type="button">打开本地文档 ↗</button><p>PPTX · PDF · Word（DOCX）· 文本<br>在本机提取文字，选中单词、短语或句子即可查词。</p></section>
     <section class="local-help" aria-label="本地 HTML 文件访问"><span id="file-access-status">正在检查本地 HTML 支持…</span><button id="file-access-settings" type="button">扩展详情 ↗</button><p id="file-access-hint" hidden>打开详情后，开启“允许访问文件 URL”，再刷新本地 HTML 页面。</p></section>
     <section class="local-help" aria-label="英语语音检查"><span id="voice-status" role="status">正在检查本地英语语音…</span><button id="voice-check" type="button">重新检查</button><button id="voice-test" type="button">测试发音</button><a href="guide.html#speech-help" target="_blank">安装帮助 ↗</a><p id="voice-hint" hidden></p></section>
     <section class="settings" aria-label="插件设置">
@@ -16,7 +17,7 @@
     </section>
     <p id="status" class="status" role="status">本地词典优先；联网翻译仅发送所选文字。不保存历史。</p>
   </main>
-  <footer class="popup-footer"><span>v1.1.2 · Enter 查询 / Shift+Enter 换行</span><a id="guide-link" href="guide.html" target="_blank">指南 ↗</a></footer>
-  <script src="core.js"></script><script src="popup.js"></script>
+  <footer class="popup-footer"><span>v1.2.0 · Enter 查询 / Shift+Enter 换行</span><a id="guide-link" href="guide.html" target="_blank">指南 ↗</a></footer>
+  <script src="core.js"></script><script src="selection-menu.js"></script><script src="popup.js"></script>
 </body>
 </html>

@@ -64,6 +64,9 @@ voiceTest.addEventListener('click', async () => {
   finally { voiceTest.disabled = false; }
 });
 checkVoice();
+document.getElementById('open-reader').addEventListener('click', () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('reader.html') });
+});
 
 function element(tag, className, text) {
   const node = document.createElement(tag); node.className = className;
@@ -111,3 +114,15 @@ document.getElementById('search-form').addEventListener('submit', async event =>
     resultBox.append(element('p', 'result-note', result.translation ? 'MyMemory 机器翻译 · 仅发送查询文字' : 'ECDICT · 离线英汉词典'));
   } catch { if (ticket === searchSequence) resultBox.textContent = '查询失败，请在扩展管理页面重新加载插件。'; }
 });
+
+(async () => {
+  const id = new URLSearchParams(location.hash.slice(1)).get('lookup');
+  if (!id) return;
+  history.replaceState(null, '', location.pathname);
+  try {
+    const pending = await WordLensSelectionMenu.createSelectionMenu(chrome, WordLensCore).consume(id);
+    if (!pending) { setStatus('这次选区已过期，请重新选中文字后右键查词。', true); return; }
+    document.getElementById('query').value = pending.text;
+    document.getElementById('search-form').requestSubmit();
+  } catch { setStatus('选区读取失败，请将文字粘贴到上方查询。', true); }
+})();
