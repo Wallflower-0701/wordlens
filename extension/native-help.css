@@ -1,0 +1,8 @@
+.native-help { max-width: 860px; font-size: 15px; line-height: 1.9; }
+.native-help h1 { font-size: 32px; margin: 22px 0; }
+.native-help h2 { font-size: 21px; }
+.native-help section { margin-top: 28px; border-top: 1px solid #dfe3d6; padding-top: 12px; }
+.native-help li { margin: 8px 0; }
+.native-help code { overflow-wrap: anywhere; font-size: 14px; }
+.native-help .download { display: inline-block; padding: 9px 16px; border-radius: 8px; background: #365b40; color: white; text-decoration: none; }
+.native-help kbd { border: 1px solid #cbd7c3; border-radius: 4px; padding: 2px 5px; }

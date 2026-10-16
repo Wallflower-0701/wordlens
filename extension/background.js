@@ -1,5 +1,5 @@
 'use strict';
-importScripts('core.js', 'translation.js', 'speech.js', 'selection-menu.js');
+importScripts('core.js', 'translation.js', 'speech.js', 'selection-menu.js', 'native-bridge.js');
 
 const selectionMenu = WordLensSelectionMenu.createSelectionMenu(chrome, WordLensCore);
 chrome.contextMenus.onClicked.addListener(info => { selectionMenu.open(info).catch(() => {}); });
@@ -15,6 +15,15 @@ const dictionary = WordLensCore.createDictionary(async key => {
 
 const translator = WordLensTranslation.createTranslator();
 const speech = WordLensSpeech.createSpeech(chrome.tts, chrome.runtime);
+let recentPageLookup = null;
+const nativeBridge = WordLensNative.createBridge({ api: chrome, core: WordLensCore, lookup: lookupText, speak,
+  recent: async text => {
+    if (!recentPageLookup || Date.now() - recentPageLookup.time > 900 || recentPageLookup.text.toLowerCase() !== text.toLowerCase()) return false;
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    return tab?.id === recentPageLookup.tab;
+  }
+});
+const settingsReady = chrome.storage.local.get('settings').then(({ settings }) => nativeBridge.configure(settings)).catch(() => {});
 async function lookupText(value) {
   const input = WordLensCore.normalizeText(value);
   if (!input) return { status: 'invalid', message: '请选择英文单词、短语或句子（最多 2000 个字符）。' };
@@ -30,6 +39,7 @@ async function lookupText(value) {
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes.settings?.newValue?.onlineTranslation === false) translator.clear();
+  if (area === 'local' && changes.settings) nativeBridge.configure(changes.settings.newValue);
 });
 
 async function speak(word) {
@@ -39,6 +49,13 @@ async function speak(word) {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (sender.id !== chrome.runtime.id || !message || typeof message !== 'object') return false;
+  if (['native-status', 'native-reconnect'].includes(message.type)) {
+    if (!sender.url?.startsWith(chrome.runtime.getURL(''))) return false;
+    settingsReady.then(async () => {
+      if (message.type === 'native-reconnect') nativeBridge.configure((await chrome.storage.local.get('settings')).settings, true);
+      sendResponse(nativeBridge.status());
+    }).catch(() => sendResponse({ status: 'error', message: '本地辅助状态读取失败。' })); return true;
+  }
   if (message.type === 'voice-status') {
     chrome.storage.local.get('settings').then(({ settings }) => speech.status(WordLensCore.sanitizeSettings(settings).accent))
       .then(sendResponse).catch(() => sendResponse({ status: 'error', message: '语音检查失败，请重新加载插件。' }));
@@ -47,9 +64,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!['lookup', 'speak'].includes(message.type)) return false;
   const input = WordLensCore.normalizeText(message.word);
   if (!input) { sendResponse({ status: 'invalid', message: '请选择英文单词、短语或句子（最多 2000 个字符）。' }); return false; }
+  if (message.type === 'lookup' && sender.tab) recentPageLookup = { text: input.text, tab: sender.tab.id, time: Date.now() };
   const operation = message.type === 'lookup' ? lookupText(input.text) : speak(input.text);
   operation.then(sendResponse).catch(() => sendResponse({ status: 'error', message: '读取失败，请在扩展管理页面重新加载插件，并刷新网页。' }));
   return true;
+});
+
+chrome.commands.onCommand.addListener(async command => {
+  if (command !== 'lookup-selection') return;
+  const settings = WordLensCore.sanitizeSettings((await chrome.storage.local.get('settings')).settings);
+  if (!settings.enabled) return;
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const started = Date.now();
+  try { await chrome.tabs.sendMessage(tab.id, { type: 'lookup-selection' }); } catch { }
+  if (recentPageLookup?.tab === tab?.id && recentPageLookup.time >= started) return;
+  await settingsReady;
+  if (!nativeBridge.capture()) {
+    await chrome.windows.create({ url: chrome.runtime.getURL('native-help.html'), type: 'popup', width: 580, height: 740 });
+  }
 });
 
 chrome.runtime.onInstalled.addListener(async details => {

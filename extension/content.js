@@ -169,9 +169,10 @@
     });
   }
 
-  async function inspect(event) {
+  async function inspect(event, manual = false) {
     if (!ready || !settings.enabled || inside(event)) return;
-    if (settings.trigger === 'alt' && !event.altKey) { hide(); return; }
+    if (!manual && settings.lookupMode !== 'auto') return;
+    if (!manual && settings.trigger === 'alt' && !event.altKey) { hide(); return; }
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.rangeCount || editable(selection, event)) { hide(); return; }
     const input = normalizeText(selection.toString());
@@ -254,4 +255,11 @@
     if (area === 'local' && changes.settings) { settings = sanitizeSettings(changes.settings.newValue); hide(); }
   });
   chrome.storage.local.get('settings').then(result => { settings = sanitizeSettings(result.settings); ready = true; }).catch(() => { ready = true; });
+  chrome.runtime.onMessage.addListener((message, sender, respond) => {
+    if (sender.id !== chrome.runtime.id || message?.type !== 'lookup-selection') return false;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !normalizeText(selection.toString())) return false;
+    inspect({ target: document.activeElement, altKey: false, composedPath: () => [] }, true).then(() => respond({ status: 'handled' }));
+    return true;
+  });
 })();
