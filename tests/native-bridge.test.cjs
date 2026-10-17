@@ -18,7 +18,7 @@ function harness(options = {}) {
     lookup: async text => { queries.push(text); return options.lookup ? options.lookup(text) : { status: 'ok', word: text, phonetic: "'test", definitions: ['测试'], kind: 'word' }; },
     speak: async text => { spoken.push(text); return { status: 'ok' }; },
     recent: options.recent, timeout: options.timeout ?? 1000 });
-  return { bridge, api, ports, queries, spoken, connect() { bridge.configure({ nativeEnabled: true, lookupMode: 'auto' }); const p = ports.at(-1); p.onMessage.emit({ type: 'ready', version: '1.3.0', automatic: true }); return p; } };
+  return { bridge, api, ports, queries, spoken, connect() { bridge.configure({ nativeEnabled: true, lookupMode: 'auto' }); const p = ports.at(-1); p.onMessage.emit({ type: 'ready', version: '1.3.1', automatic: true }); return p; } };
 }
 test('Modes are sanitized, default to ordinary auto lookup and require opt-in for the native helper', () => {
   assert.equal(core.sanitizeSettings().lookupMode, 'auto'); assert.equal(core.sanitizeSettings().nativeEnabled, false);
@@ -60,7 +60,7 @@ test('Context mode disconnects native monitoring; reconnect does not revive an o
   const h = harness(); t.after(() => h.bridge.stop()); const old = h.connect();
   h.bridge.configure({ nativeEnabled: true, lookupMode: 'context' }); assert.equal(old.disconnected, true);
   assert.equal(h.bridge.status().status, 'disabled'); assert.equal(h.bridge.capture(), false);
-  const next = h.connect(); old.onMessage.emit({ type: 'ready', version: '1.3.0' });
+  const next = h.connect(); old.onMessage.emit({ type: 'ready', version: '1.3.1' });
   next.onMessage.emit({ type: 'selection', requestId: id('1'), text: 'Basic' }); await tick();
   assert.equal(old.sent.filter(x => x.type === 'result').length, 0); assert.equal(next.sent.at(-1).type, 'result');
 });
@@ -88,10 +88,30 @@ test('A missing, incompatible or unresponsive host is not reported connected', a
   h.bridge.configure({ nativeEnabled: true }, true); await new Promise(resolve => setTimeout(resolve, 35));
   assert.equal(h.bridge.status().status, 'missing'); assert.equal(h.ports[2].disconnected, true);
 });
-test('Packaged Windows helper passes its binary framing and origin validation self-tests', { skip: process.platform !== 'win32' }, () => {
+test('A broken native port stops reporting connected even before its disconnect callback arrives', t => {
+  const h = harness(); t.after(() => h.bridge.stop()); const p = h.connect();
+  p.disconnected = true;
+  assert.equal(h.bridge.capture(), false);
+  assert.equal(h.bridge.status().status, 'missing');
+});
+
+test('Native capture failures are distinguishable from connection failures without exposing document content', t => {
+  const h = harness(); t.after(() => h.bridge.stop()); const p = h.connect();
+  p.onMessage.emit({ type: 'capture-status', state: 'no-selection', reason: 'no-provider', text: 'private text' });
+  assert.equal(h.bridge.status().status, 'ready'); assert.match(h.bridge.status().message, /文字层/);
+  assert.doesNotMatch(JSON.stringify(h.bridge.status()), /private text/);
+  p.onMessage.emit({ type: 'capture-status', state: 'no-selection', reason: '<script>private</script>' });
+  assert.doesNotMatch(JSON.stringify(h.bridge.status()), /private/);
+  p.onMessage.emit({ type: 'capture-status', state: 'shown' }); assert.match(h.bridge.status().message, /已显示/);
+});
+
+test('Packaged Windows helper passes its framing, origin, selected-range search and privacy self-tests', { skip: process.platform !== 'win32' }, () => {
   const exe = require('node:path').resolve(__dirname, '../extension/native/WordLens.Native.exe');
   const result = require('node:child_process').spawnSync(exe, ['--self-test'], { windowsHide: true, timeout: 10000 });
   assert.equal(result.status, 0, result.stderr?.toString()); const length = result.stdout.readUInt32LE();
   assert.equal(length, result.stdout.length - 4); const message = JSON.parse(result.stdout.subarray(4).toString());
-  assert.equal(message.type, 'self-test'); assert.ok(message.passed >= 5); assert.equal(message.error, undefined);
+  assert.equal(message.type, 'self-test'); assert.ok(message.passed >= 15); assert.equal(message.error, undefined);
+  assert.ok(message.selectionChecks.includes('nested-pdf-text-provider'));
+  assert.ok(message.selectionChecks.includes('editable-ancestor-never-read'));
+  assert.ok(message.selectionChecks.includes('content-free-health-snapshot'));
 });

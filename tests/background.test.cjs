@@ -33,7 +33,7 @@ test('Alt+W on a protected original page requests native selection and never ope
   const h = await background({ nativeEnabled: true, lookupMode: 'shortcut' });
   t.after(() => h.chrome.storage.onChanged.emit({ settings: { newValue: {} } }, 'local'));
   assert.equal(h.ports.length, 1); const p = h.ports[0];
-  await p.onMessage.emit({ type: 'ready', version: '1.3.0', automatic: true }); await tick();
+  await p.onMessage.emit({ type: 'ready', version: '1.3.1', automatic: true }); await tick();
   await h.chrome.commands.onCommand.emit('lookup-selection');
   assert.equal(p.sent.at(-1).type, 'capture'); assert.equal(h.windows.length, 0);
 });

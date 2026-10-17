@@ -5,20 +5,39 @@
     let port = null, settings = core.sanitizeSettings(), state = 'disabled', message = '原页面增强已关闭。';
     let generation = 0, active = null, handshake;
     function status() { return { status: state, message }; }
-    function post(value) { try { port?.postMessage(value); return !!port; } catch { return false; } }
+    function post(value) {
+      if (!port) return false;
+      try { port.postMessage(value); return true; }
+      catch { stop(); state = 'missing'; message = '本地辅助组件已断开，请重新连接。'; return false; }
+    }
     function stop() {
       generation++; active = null; clearTimeout(handshake);
-      const previous = port; port = null; if (previous) previous.disconnect();
+      const previous = port; port = null; if (previous) { try { previous.disconnect(); } catch {} }
     }
     async function received(value, connected) {
       if (connected !== port || !value || typeof value !== 'object') return;
       if (value.type === 'ready') {
-        if (value.version !== '1.3.0') { stop(); state = 'missing'; message = '本地辅助版本不匹配，请安装 / 更新 1.3.0 组件。'; return; }
+        if (value.version !== '1.3.1') { stop(); state = 'missing'; message = '本地辅助版本不匹配，请安装 / 更新 1.3.1 组件。'; return; }
         clearTimeout(handshake); state = 'ready'; message = '原页面增强已连接 · 只读取当前选区';
         if (value.automatic === false && settings.lookupMode === 'auto') message = '本地辅助已连接，但鼠标取词不可用；可切换快捷键模式。';
         post({ type: 'configure', mode: settings.lookupMode, trigger: settings.trigger }); return;
       }
       if (state !== 'ready' || !settings.enabled || !settings.nativeEnabled || settings.lookupMode === 'context') return;
+      if (value.type === 'capture-status') {
+        const reasons = {
+          'no-provider': '查看器尚未提供可读取的文字层',
+          'no-selection': '未读到所选文字，请重新选择英文',
+          'protected': '输入框或受保护文字不自动取词',
+          'provider-error': '读取文字层失败，请重新选择',
+          'provider-timeout': '读取文字层超时，请点击重新连接',
+          'search-limit': '文字层查找超时或过于复杂，请尝试 Alt+W',
+          'too-long': '选区超过 2000 字符，请缩短选区'
+        };
+        if (value.state === 'no-selection' && Object.hasOwn(reasons, value.reason)) message = `原页面增强已连接 · ${reasons[value.reason]}`;
+        else if (value.state === 'selected') message = '原页面增强已连接 · 已读到选区，正在查询';
+        else if (value.state === 'shown') message = '原页面增强已连接 · 已显示原页面释义';
+        return;
+      }
       if (value.type === 'dismissed') { generation++; active = null; return; }
       if (value.type === 'selection') {
         const ticket = ++generation; active = null;

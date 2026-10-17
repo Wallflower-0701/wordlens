@@ -83,7 +83,8 @@ namespace WordLens.Native {
         string origin = "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/";
         string manifest = new JavaScriptSerializer().Serialize(new { name = Installer.HostName, allowed_origins = new[] { origin } });
         if (!Installer.OriginInManifest(origin, manifest) || Installer.OriginInManifest("chrome-extension://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/", manifest)) throw new Exception("Manifest origin validation"); passed++;
-        Protocol.Write(Console.OpenStandardOutput(), new { type = "self-test", passed = passed }); return 0;
+        string[] selectionChecks = SelectionTests.Run();
+        Protocol.Write(Console.OpenStandardOutput(), new { type = "self-test", passed = passed + selectionChecks.Length, selectionChecks = selectionChecks }); return 0;
       } catch (Exception error) { Protocol.Write(Console.OpenStandardOutput(), new { type = "self-test", error = error.Message }); return 1; }
     }
   }
