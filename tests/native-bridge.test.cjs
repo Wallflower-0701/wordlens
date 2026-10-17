@@ -18,7 +18,7 @@ function harness(options = {}) {
     lookup: async text => { queries.push(text); return options.lookup ? options.lookup(text) : { status: 'ok', word: text, phonetic: "'test", definitions: ['测试'], kind: 'word' }; },
     speak: async text => { spoken.push(text); return { status: 'ok' }; },
     recent: options.recent, timeout: options.timeout ?? 1000 });
-  return { bridge, api, ports, queries, spoken, connect() { bridge.configure({ nativeEnabled: true, lookupMode: 'auto' }); const p = ports.at(-1); p.onMessage.emit({ type: 'ready', version: '1.3.1', automatic: true }); return p; } };
+  return { bridge, api, ports, queries, spoken, connect() { bridge.configure({ nativeEnabled: true, lookupMode: 'auto' }); const p = ports.at(-1); p.onMessage.emit({ type: 'ready', version: '1.3.2', automatic: true }); return p; } };
 }
 test('Modes are sanitized, default to ordinary auto lookup and require opt-in for the native helper', () => {
   assert.equal(core.sanitizeSettings().lookupMode, 'auto'); assert.equal(core.sanitizeSettings().nativeEnabled, false);
@@ -60,7 +60,7 @@ test('Context mode disconnects native monitoring; reconnect does not revive an o
   const h = harness(); t.after(() => h.bridge.stop()); const old = h.connect();
   h.bridge.configure({ nativeEnabled: true, lookupMode: 'context' }); assert.equal(old.disconnected, true);
   assert.equal(h.bridge.status().status, 'disabled'); assert.equal(h.bridge.capture(), false);
-  const next = h.connect(); old.onMessage.emit({ type: 'ready', version: '1.3.1' });
+  const next = h.connect(); old.onMessage.emit({ type: 'ready', version: '1.3.2' });
   next.onMessage.emit({ type: 'selection', requestId: id('1'), text: 'Basic' }); await tick();
   assert.equal(old.sent.filter(x => x.type === 'result').length, 0); assert.equal(next.sent.at(-1).type, 'result');
 });
@@ -126,8 +126,10 @@ test('Packaged Windows helper passes its framing, origin, selected-range search 
   const result = require('node:child_process').spawnSync(exe, ['--self-test'], { windowsHide: true, timeout: 10000 });
   assert.equal(result.status, 0, result.stderr?.toString()); const length = result.stdout.readUInt32LE();
   assert.equal(length, result.stdout.length - 4); const message = JSON.parse(result.stdout.subarray(4).toString());
-  assert.equal(message.type, 'self-test'); assert.ok(message.passed >= 15); assert.equal(message.error, undefined);
+  assert.equal(message.type, 'self-test'); assert.ok(message.passed >= 17); assert.equal(message.error, undefined);
   assert.ok(message.selectionChecks.includes('nested-pdf-text-provider'));
   assert.ok(message.selectionChecks.includes('editable-ancestor-never-read'));
   assert.ok(message.selectionChecks.includes('content-free-health-snapshot'));
+  assert.ok(message.popupChecks.includes('close-keeps-popup-reusable'));
+  assert.ok(message.popupChecks.includes('lookup-reopens-after-close'));
 });

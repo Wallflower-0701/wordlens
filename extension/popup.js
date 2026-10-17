@@ -75,6 +75,7 @@ async function checkNative(reconnect = false) {
       const result = await chrome.runtime.sendMessage({ type: reconnect && attempt === 0 ? 'native-reconnect' : 'native-status' });
       if (ticket !== nativeCheckTicket) return;
       label.textContent = result.message;
+      label.dataset.state = result.status;
       if (result.status !== 'connecting') return;
       await new Promise(resolve => setTimeout(resolve, 650));
     } catch { label.textContent = '原页面增强检查失败，请重新加载插件。'; return; }

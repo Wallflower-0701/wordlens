@@ -27,7 +27,7 @@
     async function received(value, connected) {
       if (connected !== port || !value || typeof value !== 'object') return;
       if (value.type === 'ready') {
-        if (value.version !== '1.3.1') { stop(); state = 'missing'; message = '本地辅助版本不匹配，请安装 / 更新 1.3.1 组件。'; return; }
+        if (value.version !== '1.3.2') { stop(); state = 'missing'; message = '本地辅助版本不匹配，请安装 / 更新 1.3.2 组件。'; return; }
         clearTimeout(handshake); state = 'ready'; message = '原页面增强已连接 · 只读取当前选区';
         if (value.automatic === false && settings.lookupMode === 'auto') message = '本地辅助已连接，但鼠标取词不可用；可切换快捷键模式。';
         post({ type: 'configure', mode: settings.lookupMode, trigger: settings.trigger }); return;
