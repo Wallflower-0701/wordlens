@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "WordLens 划词词典",
-  "version": "1.2.0",
+  "version": "1.3.2",
   "description": "选中英文单词、短语或句子，查看音标、释义与中文翻译。单词和已收录短语离线查询，整句可联网翻译。",
   "minimum_chrome_version": "114",
-  "permissions": ["storage", "tts", "contextMenus"],
+  "permissions": ["storage", "tts", "contextMenus", "nativeMessaging"],
+  "commands": { "lookup-selection": { "suggested_key": { "default": "Alt+W" }, "description": "查询原页面当前选中的英文" } },
   "host_permissions": ["https://api.mymemory.translated.net/*"],
   "background": { "service_worker": "background.js" },
   "action": {

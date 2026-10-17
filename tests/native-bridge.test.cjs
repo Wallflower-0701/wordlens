@@ -1,0 +1,135 @@
+'use strict';
+const test = require('node:test'), assert = require('node:assert/strict');
+const core = require('../extension/core.js');
+const { HOST, createBridge } = require('../extension/native-bridge.js');
+const tick = () => new Promise(resolve => setImmediate(resolve));
+const id = digit => digit.repeat(32);
+function event() { const callbacks = []; return { addListener(fn) { callbacks.push(fn); }, emit(value) { callbacks.forEach(fn => fn(value)); } }; }
+function harness(options = {}) {
+  const ports = [], queries = [], spoken = [];
+  const api = { runtime: { connectNative(name) {
+    assert.equal(name, HOST);
+    const p = { onMessage: event(), onDisconnect: event(), sent: [], disconnected: false,
+      postMessage(value) { if (this.disconnected) throw Error('closed'); this.sent.push(value); },
+      disconnect() { this.disconnected = true; this.onDisconnect.emit(); } };
+    ports.push(p); return p;
+  } } };
+  const bridge = createBridge({ api, core,
+    lookup: async text => { queries.push(text); return options.lookup ? options.lookup(text) : { status: 'ok', word: text, phonetic: "'test", definitions: ['测试'], kind: 'word' }; },
+    speak: async text => { spoken.push(text); return { status: 'ok' }; },
+    recent: options.recent, timeout: options.timeout ?? 1000 });
+  return { bridge, api, ports, queries, spoken, connect() { bridge.configure({ nativeEnabled: true, lookupMode: 'auto' }); const p = ports.at(-1); p.onMessage.emit({ type: 'ready', version: '1.3.2', automatic: true }); return p; } };
+}
+test('Modes are sanitized, default to ordinary auto lookup and require opt-in for the native helper', () => {
+  assert.equal(core.sanitizeSettings().lookupMode, 'auto'); assert.equal(core.sanitizeSettings().nativeEnabled, false);
+  assert.equal(core.sanitizeSettings({ lookupMode: '<bad>', nativeEnabled: 1 }).lookupMode, 'auto');
+  for (const mode of ['auto', 'shortcut', 'context']) assert.equal(core.sanitizeSettings({ lookupMode: mode }).lookupMode, mode);
+  const h = harness(); h.bridge.configure({}); assert.equal(h.ports.length, 0); assert.equal(h.bridge.capture(), false);
+});
+test('Native connection handshakes, carries configuration and returns phonetics and Chinese definitions', async t => {
+  const h = harness(); t.after(() => h.bridge.stop()); const p = h.connect();
+  assert.equal(h.bridge.status().status, 'ready'); assert.deepEqual(p.sent[0], { type: 'configure', mode: 'auto', trigger: 'selection' });
+  p.onMessage.emit({ type: 'selection', requestId: id('a'), text: 'Basic' }); await tick();
+  assert.deepEqual(h.queries, ['Basic']); const result = p.sent.at(-1); assert.equal(result.requestId, id('a'));
+  assert.equal(result.result.displayPhonetic, '/ˈtest/'); assert.deepEqual(result.result.definitions, ['测试']);
+  assert.equal(h.bridge.capture(), true); assert.deepEqual(p.sent.at(-1), { type: 'capture' });
+});
+test('Invalid or oversized selections never reach the lookup or translation service', async t => {
+  const h = harness(); t.after(() => h.bridge.stop()); const p = h.connect();
+  for (const text of ['中文', '<script>', 'a '.repeat(2001)]) { p.onMessage.emit({ type: 'selection', requestId: id('b'), text }); await tick(); }
+  p.onMessage.emit({ type: 'selection', requestId: '../bad', text: 'Basic' }); await tick();
+  assert.equal(h.queries.length, 0); assert.equal(p.sent.filter(x => x.type === 'dismiss').length, 4);
+});
+test('A page that already displayed the same selection does not also show a native card', async t => {
+  const h = harness({ recent: async () => true }); t.after(() => h.bridge.stop()); const p = h.connect();
+  p.onMessage.emit({ type: 'selection', requestId: id('c'), text: 'Basic' }); await tick();
+  assert.equal(h.queries.length, 0); assert.equal(p.sent.at(-1).type, 'dismiss');
+});
+test('Rapid reselection and disabling the helper discard stale lookup results', async t => {
+  let release;
+  const h = harness({ lookup: text => text === 'first' ? new Promise(resolve => { release = resolve; }) : Promise.resolve({ status: 'ok', word: text, definitions: ['第二条'] }) });
+  t.after(() => h.bridge.stop()); const p = h.connect();
+  p.onMessage.emit({ type: 'selection', requestId: id('d'), text: 'first' }); await tick();
+  p.onMessage.emit({ type: 'selection', requestId: id('e'), text: 'second' }); await tick();
+  release({ status: 'ok', word: 'first', definitions: ['旧结果'] }); await tick();
+  assert.deepEqual(p.sent.filter(x => x.type === 'result').map(x => x.requestId), [id('e')]);
+  h.bridge.configure({ nativeEnabled: false }); assert.equal(p.disconnected, true); assert.equal(h.bridge.status().status, 'disabled');
+  p.onMessage.emit({ type: 'selection', requestId: id('f'), text: 'ignored' }); await tick(); assert.equal(h.queries.length, 2);
+});
+test('Context mode disconnects native monitoring; reconnect does not revive an old port', async t => {
+  const h = harness(); t.after(() => h.bridge.stop()); const old = h.connect();
+  h.bridge.configure({ nativeEnabled: true, lookupMode: 'context' }); assert.equal(old.disconnected, true);
+  assert.equal(h.bridge.status().status, 'disabled'); assert.equal(h.bridge.capture(), false);
+  const next = h.connect(); old.onMessage.emit({ type: 'ready', version: '1.3.2' });
+  next.onMessage.emit({ type: 'selection', requestId: id('1'), text: 'Basic' }); await tick();
+  assert.equal(old.sent.filter(x => x.type === 'result').length, 0); assert.equal(next.sent.at(-1).type, 'result');
+});
+test('Closing a native card cancels an outstanding result and disables its speech request', async t => {
+  let release; const h = harness({ lookup: () => new Promise(resolve => { release = resolve; }) });
+  t.after(() => h.bridge.stop()); const p = h.connect();
+  p.onMessage.emit({ type: 'selection', requestId: id('5'), text: 'Basic' }); await tick();
+  p.onMessage.emit({ type: 'dismissed' });
+  release({ status: 'ok', word: 'Basic', definitions: ['不应显示'] }); await tick();
+  p.onMessage.emit({ type: 'speak', requestId: id('5') }); await tick();
+  assert.equal(p.sent.filter(x => x.type === 'result').length, 0); assert.equal(h.spoken.length, 0);
+});
+test('Speech is tied to the displayed selection; an unreadable selection shows a useful error without lookup', async t => {
+  const h = harness(); t.after(() => h.bridge.stop()); const p = h.connect();
+  p.onMessage.emit({ type: 'selection', requestId: id('2'), text: 'Basic' }); await tick();
+  p.onMessage.emit({ type: 'speak', requestId: id('3') }); await tick(); assert.equal(h.spoken.length, 0);
+  p.onMessage.emit({ type: 'speak', requestId: id('2') }); await tick(); assert.deepEqual(h.spoken, ['Basic']);
+  p.onMessage.emit({ type: 'capture-empty', requestId: id('4') }); await tick(); assert.match(p.sent.at(-1).result.message, /没有读到/); assert.equal(h.queries.length, 1);
+});
+test('A missing, incompatible or unresponsive host is not reported connected', async t => {
+  const h = harness({ timeout: 15 }); t.after(() => h.bridge.stop());
+  h.bridge.configure({ nativeEnabled: true }); h.api.runtime.lastError = { message: 'host not found' }; h.ports[0].onDisconnect.emit();
+  assert.equal(h.bridge.status().status, 'missing'); delete h.api.runtime.lastError;
+  h.bridge.configure({ nativeEnabled: true }, true); h.ports[1].onMessage.emit({ type: 'ready', version: '1.2.0' }); assert.equal(h.bridge.status().status, 'missing');
+  h.bridge.configure({ nativeEnabled: true }, true); await new Promise(resolve => setTimeout(resolve, 35));
+  assert.equal(h.bridge.status().status, 'missing'); assert.equal(h.ports[2].disconnected, true);
+});
+test('A broken native port stops reporting connected even before its disconnect callback arrives', t => {
+  const h = harness(); t.after(() => h.bridge.stop()); const p = h.connect();
+  p.disconnected = true;
+  assert.equal(h.bridge.capture(), false);
+  assert.equal(h.bridge.status().status, 'missing');
+});
+
+test('Native launch, registration, access and protocol errors retain the browser reason for diagnosis', t => {
+  const h = harness(); t.after(() => h.bridge.stop());
+  for (const [reason, expected] of [
+    ['Specified native messaging host not found.', /未找到.*登记/],
+    ['Access to the specified native messaging host is forbidden.', /拒绝访问/],
+    ['Failed to start native messaging host.', /无法启动/],
+    ['Native host has exited.', /启动后退出/],
+    ['Error when communicating with the native messaging host.', /通信格式异常/]
+  ]) {
+    h.bridge.configure({ nativeEnabled: true }, true);
+    h.api.runtime.lastError = { message: reason }; h.ports.at(-1).onDisconnect.emit();
+    assert.equal(h.bridge.status().status, 'missing'); assert.match(h.bridge.status().message, expected);
+    assert.ok(h.bridge.status().message.includes(reason));
+  }
+});
+
+test('Native capture failures are distinguishable from connection failures without exposing document content', t => {
+  const h = harness(); t.after(() => h.bridge.stop()); const p = h.connect();
+  p.onMessage.emit({ type: 'capture-status', state: 'no-selection', reason: 'no-provider', text: 'private text' });
+  assert.equal(h.bridge.status().status, 'ready'); assert.match(h.bridge.status().message, /文字层/);
+  assert.doesNotMatch(JSON.stringify(h.bridge.status()), /private text/);
+  p.onMessage.emit({ type: 'capture-status', state: 'no-selection', reason: '<script>private</script>' });
+  assert.doesNotMatch(JSON.stringify(h.bridge.status()), /private/);
+  p.onMessage.emit({ type: 'capture-status', state: 'shown' }); assert.match(h.bridge.status().message, /已显示/);
+});
+
+test('Packaged Windows helper passes its framing, origin, selected-range search and privacy self-tests', { skip: process.platform !== 'win32' }, () => {
+  const exe = require('node:path').resolve(__dirname, '../extension/native/WordLens.Native.exe');
+  const result = require('node:child_process').spawnSync(exe, ['--self-test'], { windowsHide: true, timeout: 10000 });
+  assert.equal(result.status, 0, result.stderr?.toString()); const length = result.stdout.readUInt32LE();
+  assert.equal(length, result.stdout.length - 4); const message = JSON.parse(result.stdout.subarray(4).toString());
+  assert.equal(message.type, 'self-test'); assert.ok(message.passed >= 17); assert.equal(message.error, undefined);
+  assert.ok(message.selectionChecks.includes('nested-pdf-text-provider'));
+  assert.ok(message.selectionChecks.includes('editable-ancestor-never-read'));
+  assert.ok(message.selectionChecks.includes('content-free-health-snapshot'));
+  assert.ok(message.popupChecks.includes('close-keeps-popup-reusable'));
+  assert.ok(message.popupChecks.includes('lookup-reopens-after-close'));
+});

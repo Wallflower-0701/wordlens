@@ -1,7 +1,7 @@
 /* Shared, dependency-free lookup logic. */
 (() => {
   'use strict';
-  const DEFAULTS = Object.freeze({ enabled: true, trigger: 'selection', accent: 'en-GB', onlineTranslation: true });
+  const DEFAULTS = Object.freeze({ enabled: true, trigger: 'selection', accent: 'en-GB', onlineTranslation: true, lookupMode: 'auto', nativeEnabled: false });
   const MAX_TEXT_LENGTH = 2000;
 
   function normalizeText(value) {
@@ -56,7 +56,9 @@
       enabled: typeof value?.enabled === 'boolean' ? value.enabled : DEFAULTS.enabled,
       trigger: value?.trigger === 'alt' ? 'alt' : 'selection',
       accent: value?.accent === 'en-US' ? 'en-US' : 'en-GB',
-      onlineTranslation: typeof value?.onlineTranslation === 'boolean' ? value.onlineTranslation : DEFAULTS.onlineTranslation
+      onlineTranslation: typeof value?.onlineTranslation === 'boolean' ? value.onlineTranslation : DEFAULTS.onlineTranslation,
+      lookupMode: ['auto', 'shortcut', 'context'].includes(value?.lookupMode) ? value.lookupMode : 'auto',
+      nativeEnabled: value?.nativeEnabled === true
     };
   }
 

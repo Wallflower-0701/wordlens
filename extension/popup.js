@@ -1,5 +1,5 @@
 'use strict';
-const controls = ['enabled', 'trigger', 'accent', 'onlineTranslation'].map(id => document.getElementById(id));
+const controls = ['enabled', 'trigger', 'accent', 'onlineTranslation', 'lookupMode', 'nativeEnabled'].map(id => document.getElementById(id));
 const status = document.getElementById('status');
 const resultBox = document.getElementById('search-result');
 let searchSequence = 0;
@@ -12,6 +12,8 @@ async function loadSettings() {
     controls[1].value = settings.trigger;
     controls[2].value = settings.accent;
     controls[3].checked = settings.onlineTranslation;
+    controls[4].value = settings.lookupMode;
+    controls[5].checked = settings.nativeEnabled;
   } catch { setStatus('设置读取失败，请重新打开插件面板。', true); }
 }
 
@@ -19,9 +21,9 @@ function setStatus(text, isError = false) { status.textContent = text; status.cl
 controls.forEach(control => {
   control.disabled = true;
   control.addEventListener('change', () => {
-    const settings = { enabled: controls[0].checked, trigger: controls[1].value, accent: controls[2].value, onlineTranslation: controls[3].checked };
+    const settings = { enabled: controls[0].checked, trigger: controls[1].value, accent: controls[2].value, onlineTranslation: controls[3].checked, lookupMode: controls[4].value, nativeEnabled: controls[5].checked };
     saveQueue = saveQueue.catch(() => {}).then(async () => {
-      try { await chrome.storage.local.set({ settings }); setStatus('设置已保存，已打开的网页会立即生效。'); }
+      try { await chrome.storage.local.set({ settings }); setStatus('设置已保存，已打开的网页会立即生效。'); checkNative(); }
       catch { setStatus('设置保存失败，请重试。', true); }
     });
   });
@@ -64,6 +66,23 @@ voiceTest.addEventListener('click', async () => {
   finally { voiceTest.disabled = false; }
 });
 checkVoice();
+let nativeCheckTicket = 0;
+async function checkNative(reconnect = false) {
+  const ticket = ++nativeCheckTicket;
+  const label = document.getElementById('native-status');
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      const result = await chrome.runtime.sendMessage({ type: reconnect && attempt === 0 ? 'native-reconnect' : 'native-status' });
+      if (ticket !== nativeCheckTicket) return;
+      label.textContent = result.message;
+      label.dataset.state = result.status;
+      if (result.status !== 'connecting') return;
+      await new Promise(resolve => setTimeout(resolve, 650));
+    } catch { label.textContent = '原页面增强检查失败，请重新加载插件。'; return; }
+  }
+}
+document.getElementById('native-reconnect').addEventListener('click', () => checkNative(true));
+checkNative();
 document.getElementById('open-reader').addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('reader.html') });
 });

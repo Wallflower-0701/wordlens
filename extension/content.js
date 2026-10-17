@@ -19,12 +19,12 @@
     :host { all: initial !important; position: fixed !important; inset: var(--wl-top, 0px) auto auto var(--wl-left, 0px) !important;
       margin: 0 !important; padding: 0 !important; border: 0 !important;
       background: transparent !important; z-index: 2147483647 !important;
-      width: var(--wl-width, min(344px, calc(100vw - 24px))) !important; color-scheme: light !important; }
+      width: var(--wl-width, min(360px, calc(100vw - 24px))) !important; color-scheme: light !important; }
     :host([hidden]) { display: none !important; }
     *, *::before, *::after { box-sizing: border-box; }
     .card { font: 14px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
-      color: #263d35; background: #fffefb; border: 1px solid #dedfd5; border-radius: 18px;
-      box-shadow: 0 10px 40px #132c2826, 0 2px 8px #132c2810; overflow: hidden; text-align: left;
+      color: #233b30; background: #ffffff; border: 1px solid #e0e9e3; border-radius: 18px;
+      box-shadow: 0 12px 44px #173d2420, 0 2px 8px #173d240a; overflow: hidden; text-align: left;
       max-height: calc(100vh - 24px); display: flex; flex-direction: column; }
     .top { display: flex; align-items: center; gap: 7px; padding: 14px 18px 0; }
     .brand { font-size: 10px; font-weight: 800; letter-spacing: 1.7px; color: #648274; }
@@ -34,11 +34,11 @@
     .close { margin-left: auto; height: 26px; width: 26px; border-radius: 8px; font-size: 21px; color: #7a837b; line-height: 1; }
     .close:hover { background: #eff1e9; }
     .heading { padding: 7px 20px 16px; }
-    .word { font: 600 30px/1.25 Georgia, "Times New Roman", serif; margin: 0 0 10px; overflow-wrap: anywhere; color: #203b30; }
+    .word { font: 400 30px/1.25 Georgia, "Times New Roman", serif; margin: 0 0 10px; overflow-wrap: anywhere; color: #233b30; }
     .word.long { font: 500 17px/1.55 -apple-system, "Segoe UI", sans-serif; max-height: 145px; overflow: auto; }
     .sound-row { display: flex; align-items: center; gap: 10px; }
     .phonetic { color: #6d776e; font-size: 14px; font-family: "Segoe UI", "Arial Unicode MS", sans-serif; overflow-wrap: anywhere; }
-    .speak { flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; background: #eaf1e7; color: #356349; display: grid; place-items: center; }
+    .speak { flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; background: #eaf5ee; color: #356349; display: grid; place-items: center; }
     .speak:hover { background: #d9e6d5; }
     .speak:disabled { opacity: .5; cursor: wait; }
     .speak svg { width: 16px; height: 16px; }
@@ -47,7 +47,7 @@
     .definition:last-child { margin-bottom: 0; }
     .pos { display: inline-block; font: 600 12px/1.7 Georgia, serif; color: #63805f; background: #eff3e9; padding: 0 6px; border-radius: 4px; margin-right: 7px; }
     .muted { color: #7d8379; font-size: 12px; margin: 7px 0 0; }
-    .note { padding: 9px 20px 11px; background: #f6f7f0; font-size: 10px; color: #7d8578; }
+    .note { padding: 9px 20px 11px; background: #f7faf8; font-size: 10px; color: #7d8578; }
     .error { color: #99572e; }
     @media (prefers-reduced-motion: no-preference) { .card { animation: appear .13s ease-out; } @keyframes appear { from { opacity: 0; transform: translateY(4px); } } }
   `;
@@ -97,7 +97,7 @@
     const topEdge = viewport?.offsetTop || 0;
     const width = viewport?.width || window.innerWidth;
     const height = viewport?.height || window.innerHeight;
-    host.style.setProperty('--wl-width', `${Math.min(344, Math.max(120, width - 24))}px`);
+    host.style.setProperty('--wl-width', `${Math.min(360, Math.max(120, width - 24))}px`);
     const rect = card.getBoundingClientRect();
     const left = Math.min(Math.max(leftEdge + 12, anchor.left), leftEdge + width - rect.width - 12);
     let top = anchor.bottom + 10;
@@ -169,9 +169,10 @@
     });
   }
 
-  async function inspect(event) {
+  async function inspect(event, manual = false) {
     if (!ready || !settings.enabled || inside(event)) return;
-    if (settings.trigger === 'alt' && !event.altKey) { hide(); return; }
+    if (!manual && settings.lookupMode !== 'auto') return;
+    if (!manual && settings.trigger === 'alt' && !event.altKey) { hide(); return; }
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.rangeCount || editable(selection, event)) { hide(); return; }
     const input = normalizeText(selection.toString());
@@ -254,4 +255,11 @@
     if (area === 'local' && changes.settings) { settings = sanitizeSettings(changes.settings.newValue); hide(); }
   });
   chrome.storage.local.get('settings').then(result => { settings = sanitizeSettings(result.settings); ready = true; }).catch(() => { ready = true; });
+  chrome.runtime.onMessage.addListener((message, sender, respond) => {
+    if (sender.id !== chrome.runtime.id || message?.type !== 'lookup-selection') return false;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !normalizeText(selection.toString())) return false;
+    inspect({ target: document.activeElement, altKey: false, composedPath: () => [] }, true).then(() => respond({ status: 'handled' }));
+    return true;
+  });
 })();
