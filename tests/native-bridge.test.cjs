@@ -95,6 +95,22 @@ test('A broken native port stops reporting connected even before its disconnect 
   assert.equal(h.bridge.status().status, 'missing');
 });
 
+test('Native launch, registration, access and protocol errors retain the browser reason for diagnosis', t => {
+  const h = harness(); t.after(() => h.bridge.stop());
+  for (const [reason, expected] of [
+    ['Specified native messaging host not found.', /未找到.*登记/],
+    ['Access to the specified native messaging host is forbidden.', /拒绝访问/],
+    ['Failed to start native messaging host.', /无法启动/],
+    ['Native host has exited.', /启动后退出/],
+    ['Error when communicating with the native messaging host.', /通信格式异常/]
+  ]) {
+    h.bridge.configure({ nativeEnabled: true }, true);
+    h.api.runtime.lastError = { message: reason }; h.ports.at(-1).onDisconnect.emit();
+    assert.equal(h.bridge.status().status, 'missing'); assert.match(h.bridge.status().message, expected);
+    assert.ok(h.bridge.status().message.includes(reason));
+  }
+});
+
 test('Native capture failures are distinguishable from connection failures without exposing document content', t => {
   const h = harness(); t.after(() => h.bridge.stop()); const p = h.connect();
   p.onMessage.emit({ type: 'capture-status', state: 'no-selection', reason: 'no-provider', text: 'private text' });

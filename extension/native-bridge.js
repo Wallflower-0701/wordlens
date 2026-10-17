@@ -1,6 +1,16 @@
 (function (root) {
   'use strict';
   const HOST = 'com.wordlens.selection';
+  function connectionError(reason) {
+    const detail = typeof reason === 'string' ? reason.replace(/[\u0000-\u001f]/g, ' ').slice(0, 300) : '';
+    let explanation = '本地辅助组件连接失败';
+    if (/host not found/i.test(detail)) explanation = '浏览器未找到本地辅助组件登记';
+    else if (/forbidden|blocked|not allowed/i.test(detail)) explanation = '浏览器拒绝访问本地辅助组件';
+    else if (/failed to start/i.test(detail)) explanation = '浏览器无法启动本地辅助组件';
+    else if (/host has exited/i.test(detail)) explanation = '本地辅助组件启动后退出';
+    else if (/communicating/i.test(detail)) explanation = '本地辅助组件通信格式异常';
+    return detail ? `${explanation}。错误原文：${detail}` : '本地辅助组件已断开，请重新连接。';
+  }
   function createBridge({ api, core, lookup, speak, recent = async () => false, timeout = 6000 }) {
     let port = null, settings = core.sanitizeSettings(), state = 'disabled', message = '原页面增强已关闭。';
     let generation = 0, active = null, handshake;
@@ -78,10 +88,13 @@
           const reason = api.runtime.lastError?.message;
           if (connected !== port) return;
           port = null; clearTimeout(handshake); generation++; active = null; state = 'missing';
-          message = reason ? '本地辅助组件未连接，请先安装，再点击重新连接。' : '本地辅助组件已断开，请重新连接。';
+          message = connectionError(reason);
         });
         handshake = setTimeout(() => { if (connected !== port || state === 'ready') return; stop(); state = 'missing'; message = '本地辅助组件连接超时，请重新安装 / 更新后重试。'; }, timeout);
-      } catch { port = null; state = 'unsupported'; message = '此浏览器不支持 Windows 原页面增强。'; }
+      } catch (error) {
+        port = null; state = typeof api.runtime.connectNative === 'function' ? 'missing' : 'unsupported';
+        message = state === 'unsupported' ? '此浏览器不支持 Windows 原页面增强。' : connectionError(error?.message);
+      }
       return status();
     }
     function capture() { return state === 'ready' && post({ type: 'capture' }); }
