@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Windows;
 
 namespace WordLens.Native {
   static class SelectionTests {
@@ -10,6 +11,8 @@ namespace WordLens.Native {
       public bool IsDocument, IsContainer, Edit, ReadOnly, Provider, Broken, Outside;
       public bool Password = false;
       public string Text;
+      public Rect[] Bounds = new[] { new Rect(110,230,60,20) };
+      public bool? ContainsCaret = true;
       public int Reads;
       public override string Id { get { return id; } }
       public override bool Blocked { get { return SelectionSearch.IsBlocked(Password, Edit, false, ReadOnly); } }
@@ -25,7 +28,7 @@ namespace WordLens.Native {
         if (Broken) throw new Exception("Disconnected provider");
         if (!Provider) return null;
         result.Providers++;
-        return Text == null ? null : new SelectedText { Text = Text };
+        return Text == null ? null : new SelectedText { Text = Text, SelectionBounds = Bounds, PointWithinRange = ContainsCaret };
       }
     }
     static readonly SelectionCapture.NativePoint Anchor = new SelectionCapture.NativePoint { X = 120, Y = 240 };
@@ -42,6 +45,21 @@ namespace WordLens.Native {
       var result = SelectionSearch.Find(document, null, Anchor);
       Check(result.Selection != null && result.Selection.Text == "Basic" && pdf.Reads == 1, "Nested read-only PDF provider");
       passed.Add("nested-pdf-text-provider");
+
+      var stale = new Node { IsDocument = true, Provider = true, Text = "previous word", Bounds = new[] { new Rect(400,400,100,25) } };
+      stale.Add(new Node { Provider = true, Text = "current word" });
+      result = SelectionSearch.Find(stale, null, Anchor);
+      Check(result.Selection != null && result.Selection.Text == "current word" && result.Rejected == 1, "Stale ancestor selection replaced current word");
+      passed.Add("stale-ancestor-selection-rejected");
+
+      var wrongCaret = new Node { IsDocument = true, Provider = true, Text = "unrelated", ContainsCaret = false };
+      result = SelectionSearch.Find(wrongCaret, null, Anchor);
+      Check(result.Selection == null && result.Reason == "selection-mismatch", "Caret outside selected range accepted");
+      passed.Add("point-range-must-match-selection");
+
+      Check(SelectionGeometry.Matches(new[] {new Rect(20,100,100,20),new Rect(110,230,60,20)},true,Anchor)
+        && !SelectionGeometry.Matches(new Rect[0],true,Anchor), "Wrapped or invisible selection geometry");
+      passed.Add("wrapped-selection-uses-all-visible-rectangles");
 
       var sensitive = new Node { Edit = true, Provider = true, Text = "private input" };
       var sensitiveChild = sensitive.Add(new Node { Provider = true, Text = "private input" });
@@ -74,6 +92,7 @@ namespace WordLens.Native {
       passed.Add("bounded-provider-search");
 
       Check(SelectionTiming.Retry("no-selection", 1) && SelectionTiming.Retry("no-selection", 2) && !SelectionTiming.Retry("no-selection", 3)
+        && SelectionTiming.Retry("selection-mismatch", 4) && !SelectionTiming.Retry("selection-mismatch", 5)
         && !SelectionTiming.Retry("foreground", 1) && !SelectionTiming.Retry("too-long", 1), "Retry limits");
       passed.Add("transient-selection-retry-limits");
 

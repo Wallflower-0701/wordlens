@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 
 [assembly: AssemblyTitle("WordLens 原页面划词辅助")]
-[assembly: AssemblyVersion("1.3.2.0")]
+[assembly: AssemblyVersion("1.3.3.0")]
 
 namespace WordLens.Native {
   static class Program {
@@ -19,7 +19,7 @@ namespace WordLens.Native {
       if (args.Length == 1 && args[0] == "--self-test") return SelfTests.Run();
       if (args.Length == 2 && args[0] == "--render-preview") return PopupPreview.Run(args[1]);
       if (args.Length == 2 && args[0] == "--install-user") {
-        try { Installer.Install(args[1]); Protocol.Write(Console.OpenStandardOutput(), new { type = "installed", version = "1.3.2", scope = "current-user" }); return 0; }
+        try { Installer.Install(args[1]); Protocol.Write(Console.OpenStandardOutput(), new { type = "installed", version = "1.3.3", scope = "current-user" }); return 0; }
         catch (Exception error) { Protocol.Write(Console.OpenStandardOutput(), new { type = "install-error", message = error.Message }); return 1; }
       }
       if (args.Length > 0 && (args[0] == "--test-host" || Installer.AllowedOrigin(args[0]))) {
@@ -54,6 +54,7 @@ namespace WordLens.Native {
     SelectionCapture.NativePoint capturePoint;
     int attempts;
     DateTime busySince;
+    DateTime hookChecked;
     bool slowReported;
     public Host(bool diagnosticMode) {
       diagnostic = diagnosticMode;
@@ -63,17 +64,23 @@ namespace WordLens.Native {
       BeginInvoke((Action)(() => {
         Hide(); timer.Tick += Tick; timer.Start();
         hookCallback = MouseInput;
-        mouseHook = SetWindowsHookEx(14, hookCallback, GetModuleHandle(null), 0);
+        RefreshHook();
         new Thread(ReadLoop) { IsBackground = true, Name = "WordLens native input" }.Start();
-        Send(new { type = "ready", version = "1.3.2", selectedTextOnly = true, clipboard = false, automatic = mouseHook != IntPtr.Zero });
+        Send(new { type = "ready", version = "1.3.3", selectedTextOnly = true, clipboard = false, automatic = mouseHook != IntPtr.Zero });
         Report("ready", mouseHook == IntPtr.Zero ? "hook-unavailable" : "", null);
       }));
-      FormClosed += delegate { alive = false; timer.Stop(); if (mouseHook != IntPtr.Zero) UnhookWindowsHookEx(mouseHook); popup.Dispose(); NativeStatus.Write(NativeStatus.Snapshot("disconnected", "", mode, 0, 0, 0)); };
+      FormClosed += delegate { alive = false; timer.Stop(); if (mouseHook != IntPtr.Zero) UnhookWindowsHookEx(mouseHook); popup.Dispose(); if (!diagnostic) NativeStatus.Write(NativeStatus.Snapshot("disconnected", "", mode, 0, 0, 0)); };
     }
     protected override void SetVisibleCore(bool value) { base.SetVisibleCore(false); }
     void ClearSelection(bool notify) {
+      bool hadSelection = pending || busy || request != "" || popup.Visible;
       generation++; pending = false; request = ""; if (!popup.IsDisposed) popup.Hide();
-      if (notify) Send(new { type = "dismissed" });
+      if (notify && hadSelection) Send(new { type = "dismissed" });
+    }
+    void RefreshHook() {
+      if (mouseHook != IntPtr.Zero) UnhookWindowsHookEx(mouseHook);
+      mouseHook = SetWindowsHookEx(14, hookCallback, GetModuleHandle(null), 0);
+      hookChecked = DateTime.UtcNow;
     }
     IntPtr MouseInput(int code, IntPtr message, IntPtr data) {
       int kind = message.ToInt32();
@@ -93,7 +100,7 @@ namespace WordLens.Native {
     }
     void Report(string state, string reason, CaptureResult result) {
       var snapshot = NativeStatus.Snapshot(state, reason, mode, attempts, result == null ? 0 : result.Nodes, result == null ? 0 : result.Providers);
-      NativeStatus.Write(snapshot); Send(snapshot);
+      if (!diagnostic) NativeStatus.Write(snapshot); Send(snapshot);
     }
     void Send(object value) { if (alive) { try { Protocol.Write(output, value); } catch { alive = false; BeginInvoke((Action)(() => Close())); } } }
     static string StringValue(Dictionary<string, object> message, string key) { object value; return message.TryGetValue(key, out value) ? value as string : null; }
@@ -132,6 +139,8 @@ namespace WordLens.Native {
     }
     void Tick(object sender, EventArgs e) {
       if (!alive) { Close(); return; }
+      // Windows may silently remove a slow low-level hook. Renew it on the UI thread.
+      if ((DateTime.UtcNow - hookChecked).TotalSeconds >= 20) RefreshHook();
       if (popup.IsDisposed) { generation++; pending = false; request = ""; popup = new Popup(Send, () => ClearSelection(true)); }
       var point = SelectionCapture.Cursor(); bool inside = popup.Visible && popup.Bounds.Contains(point.X, point.Y);
       bool escape = SelectionCapture.GetAsyncKeyState(0x1b) != 0;
