@@ -28,4 +28,15 @@ nav select { max-width: 140px; }
 .footnote { font-size: 12px; line-height: 1.9; color: #7a8570; }
 a { color: #446b49; }
 [hidden] { display: none !important; }
+.pdf-controls { display: flex; gap: 18px; flex-wrap: wrap; margin: 0 0 18px; font-size: 14px; }
+#page-content.pdf-original { padding: 0; border: 0; border-radius: 0; background: transparent; overflow: auto; }
+.pdf-sheet { position: relative; margin: 0 auto; background: white; box-shadow: 0 4px 20px #24382612; }
+.pdf-sheet canvas { display: block; user-select: none; }
+/* PDF.js text-layer positioning (Apache-2.0); visible page is the original bitmap. */
+.textLayer { position: absolute; inset: 0; overflow: clip; line-height: 1; letter-spacing: normal; word-spacing: normal; text-align: initial; text-size-adjust: none; forced-color-adjust: none; transform-origin: 0 0; z-index: 1; --min-font-size: 1; --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size)); --min-font-size-inv: calc(1 / var(--min-font-size)); }
+.textLayer :is(span,br) { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0 0; user-select: text; }
+.textLayer > :not(.markedContent), .textLayer .markedContent span:not(.markedContent) { z-index: 1; --font-height: 0; font-size: calc(var(--text-scale-factor) * var(--font-height)); --scale-x: 1; --rotate: 0deg; transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv)); }
+.textLayer .markedContent { display: contents; }
+.textLayer ::selection { color: transparent; background: #4894df55; }
+.textLayer br::selection { background: transparent; }
 @media(max-width: 580px) { header { padding: 14px; gap: 10px; } header > span { display: none; } main { padding: 25px 14px; } nav { gap: 8px; } nav button { padding: 9px; } #page-content { font-size: 19px; } }

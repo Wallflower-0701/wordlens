@@ -3,10 +3,12 @@
   'use strict';
   const DEFAULTS = Object.freeze({ enabled: true, trigger: 'selection', accent: 'en-GB', onlineTranslation: true, lookupMode: 'auto', nativeEnabled: false });
   const MAX_TEXT_LENGTH = 2000;
+  const LIGATURES = Object.freeze({ 'ﬀ': 'ff', 'ﬁ': 'fi', 'ﬂ': 'fl', 'ﬃ': 'ffi', 'ﬄ': 'ffl', 'ﬅ': 'st', 'ﬆ': 'st' });
+  function expandLigatures(value) { return value.replace(/[ﬀ-ﬆ]/g, character => LIGATURES[character] || character); }
 
   function normalizeText(value) {
     if (typeof value !== 'string' || value.length > 10000) return null;
-    const text = value.trim().replace(/\s+/g, ' ');
+    const text = expandLigatures(value).trim().replace(/\s+/g, ' ');
     if (!text || text.length > MAX_TEXT_LENGTH || !/[A-Za-z]/.test(text) || /[<>{}`\u0000-\u0008\u000e-\u001f\u3400-\u9fff]/.test(text)) return null;
     const word = normalizeWord(text);
     if (word) return { text, kind: 'word' };
@@ -46,7 +48,7 @@
 
   function normalizeWord(value) {
     if (typeof value !== 'string' || value.length > 120) return null;
-    const word = value.trim().replace(/[‘’]/g, "'").replace(/[‐‑–]/g, '-')
+    const word = expandLigatures(value).trim().replace(/[‘’]/g, "'").replace(/[‐‑–]/g, '-')
       .replace(/^[\s"“”([{<.,!?;:]+|[\s"“”\])}>.,!?;:]+$/g, '');
     return word.length <= 64 && /^[A-Za-z]+(?:[-'][A-Za-z]+)*$/.test(word) ? word.toLowerCase() : null;
   }

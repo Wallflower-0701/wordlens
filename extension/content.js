@@ -3,6 +3,7 @@
   if (globalThis.__wordLensActive) return;
   globalThis.__wordLensActive = true;
   const { normalizeText, sanitizeSettings, displayPhonetic } = WordLensCore;
+  const ownReader = location.href.split(/[?#]/)[0] === chrome.runtime.getURL('reader.html');
   let settings = sanitizeSettings();
   let host, shadow, card, body, wordLabel, phoneticLabel, note, speaker;
   let sequence = 0;
@@ -120,12 +121,12 @@
     speaker.disabled = result.status !== 'ok';
     note.classList.remove('error');
     if (result.status === 'ok') {
-      wordLabel.textContent = result.word;
+      wordLabel.textContent = selected;
       wordLabel.classList.toggle('long', result.kind !== 'word');
       shadow.querySelector('.offline').textContent = result.translation ? '联网翻译' : '离线';
       phoneticLabel.textContent = result.phonetic ? displayPhonetic(result.phonetic) : (result.kind === 'word' ? '暂无音标' : (result.translation ? '英文 → 简体中文' : '短语释义'));
-      activeWord = result.word;
-      if (result.isBaseForm) paragraph(`“${selected}” 的原形释义`, 'muted');
+      activeWord = selected;
+      if (result.isBaseForm) paragraph(`原形：${result.word}`, 'muted');
       for (const line of result.definitions) {
         const match = line.match(/^([a-z]{1,6}\.(?:\/[a-z]{1,6}\.)?)\s+(.+)$/);
         const element = paragraph('');
@@ -171,7 +172,7 @@
 
   async function inspect(event, manual = false) {
     if (!ready || !settings.enabled || inside(event)) return;
-    if (!manual && settings.lookupMode !== 'auto') return;
+    if (!manual && settings.lookupMode !== 'auto' && !ownReader) return;
     if (!manual && settings.trigger === 'alt' && !event.altKey) { hide(); return; }
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.rangeCount || editable(selection, event)) { hide(); return; }
