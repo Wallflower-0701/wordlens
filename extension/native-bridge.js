@@ -33,18 +33,24 @@
     async function received(value, connected) {
       if (connected !== port || !value || typeof value !== 'object') return;
       if (value.type === 'ready') {
-        if (value.version !== '1.3.3') { stop(); state = 'missing'; message = '本地辅助版本不匹配，请安装 / 更新 1.3.3 组件。'; return; }
-        clearTimeout(handshake); state = 'ready'; message = '原页面增强已连接 · 只读取当前选区';
+        if (value.version !== '1.3.4') { stop(); state = 'missing'; message = '本地辅助版本不匹配，请安装 / 更新 1.3.4 组件。'; return; }
+        clearTimeout(handshake); state = 'ready'; message = settings.lookupMode === 'copy' ? 'PDF 兼容取词已连接 · 选中英文后按 Ctrl+C' : '原页面增强已连接 · 只读取当前选区';
         if (value.automatic === false && settings.lookupMode === 'auto') message = '本地辅助已连接，但鼠标取词不可用；可切换快捷键模式。';
         post({ type: 'configure', mode: settings.lookupMode, trigger: settings.trigger }); return;
       }
       if (state !== 'ready' || !settings.enabled || !settings.nativeEnabled || settings.lookupMode === 'context') return;
+      if (value.type === 'configured' && settings.lookupMode === 'copy' && value.copyAvailable === false) {
+        stop(); state='missing'; message='复制取词监听未能启动，请点击重新连接。'; return;
+      }
       if (value.type === 'capture-status') {
         if (value.reason === 'provider-timeout') { recoverCapture(); return; }
         const reasons = {
           'no-provider': '查看器尚未提供可读取的文字层',
           'no-selection': '未读到所选文字，请重新选择英文',
           'selection-mismatch': '文字层返回的选区与当前位置不符，请重新选择英文',
+          'copy-required': '复制模式：选中英文后按 Ctrl+C 查词',
+          'copy-empty': '本次复制没有提供纯文本，请重新选中英文后复制',
+          'copy-busy': '剪贴板暂时被占用，请重新复制',
           'protected': '输入框或受保护文字不自动取词',
           'provider-error': '读取文字层失败，请重新选择',
           'search-limit': '文字层查找超时或过于复杂，请尝试 Alt+W',
@@ -89,7 +95,10 @@
         stop(); recoveries = 0; state = 'disabled'; message = settings.lookupMode === 'context' ? '右键模式：选择文字后右键查词。' : '原页面增强已关闭。'; return status();
       }
       if (force) { stop(); recoveries = 0; }
-      if (port) { post({ type: 'configure', mode: settings.lookupMode, trigger: settings.trigger }); return status(); }
+      if (port) {
+        if (state === 'ready') message = settings.lookupMode === 'copy' ? 'PDF 兼容取词已连接 · 选中英文后按 Ctrl+C' : '原页面增强已连接 · 只读取当前选区';
+        post({ type: 'configure', mode: settings.lookupMode, trigger: settings.trigger }); return status();
+      }
       state = 'connecting'; message = '正在连接本地辅助组件…';
       try {
         const connected = api.runtime.connectNative(HOST); port = connected;

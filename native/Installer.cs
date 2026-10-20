@@ -19,7 +19,7 @@ namespace WordLens.Native {
       Text = "WordLens 原页面增强 · 安装 / 卸载"; Size = new Size(540, 410); StartPosition = FormStartPosition.CenterScreen;
       Font = new Font("Microsoft YaHei UI", 10); BackColor = Color.FromArgb(250, 251, 245); FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false;
       var title = new Label { Text = "在原来的 PDF / PPT 页面查词", Location = new Point(25, 22), Size = new Size(480, 36), Font = new Font(Font, FontStyle.Bold) };
-      var description = new Label { Text = "仅在插件启用后读取 Edge、Chrome、PowerPoint 或 WPS 的当前选区。\n不读取整份文档，不使用剪贴板，不记录输入，不随 Windows 开机启动。\n安装仅注册当前用户的浏览器通信组件，无需管理员权限。", Location = new Point(25, 70), Size = new Size(480, 85) };
+      var description = new Label { Text = "标准模式读取当前选区；PDF 复制模式只读你按 Ctrl+C 新复制的文字。\n复制模式需在插件中主动选择，不读取历史、不改写剪贴板。\n不记录输入、不随开机启动；仅当前用户注册，无需管理员权限。", Location = new Point(25, 70), Size = new Size(480, 85) };
       var label = new Label { Text = "粘贴插件面板中显示的扩展 ID（32 个字母）：", Location = new Point(25, 165), Size = new Size(470, 25) };
       extensionId = new TextBox { Text = id, Location = new Point(25, 195), Size = new Size(470, 28), AccessibleName = "WordLens 扩展 ID" };
       var install = new Button { Text = "安装 / 更新", Location = new Point(25, 244), Size = new Size(140, 35) }; install.Click += delegate { try { Install(extensionId.Text.Trim()); status.Text = "安装完成。请在 Edge 重新加载 WordLens，并启用“原页面增强”。"; } catch (Exception e) { status.Text = e.Message; } };
@@ -85,7 +85,8 @@ namespace WordLens.Native {
         if (!Installer.OriginInManifest(origin, manifest) || Installer.OriginInManifest("chrome-extension://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/", manifest)) throw new Exception("Manifest origin validation"); passed++;
         string[] selectionChecks = SelectionTests.Run();
         string[] popupChecks = PopupTests.Run();
-        Protocol.Write(Console.OpenStandardOutput(), new { type = "self-test", passed = passed + selectionChecks.Length + popupChecks.Length, selectionChecks = selectionChecks, popupChecks = popupChecks }); return 0;
+        string[] copyChecks = CopySelection.Tests();
+        Protocol.Write(Console.OpenStandardOutput(), new { type = "self-test", passed = passed + selectionChecks.Length + popupChecks.Length + copyChecks.Length, selectionChecks = selectionChecks, popupChecks = popupChecks, copyChecks=copyChecks }); return 0;
       } catch (Exception error) { Protocol.Write(Console.OpenStandardOutput(), new { type = "self-test", error = error.Message }); return 1; }
     }
   }

@@ -57,7 +57,7 @@
       trigger: value?.trigger === 'alt' ? 'alt' : 'selection',
       accent: value?.accent === 'en-US' ? 'en-US' : 'en-GB',
       onlineTranslation: typeof value?.onlineTranslation === 'boolean' ? value.onlineTranslation : DEFAULTS.onlineTranslation,
-      lookupMode: ['auto', 'shortcut', 'context'].includes(value?.lookupMode) ? value.lookupMode : 'auto',
+      lookupMode: ['auto', 'shortcut', 'context', 'copy'].includes(value?.lookupMode) ? value.lookupMode : 'auto',
       nativeEnabled: value?.nativeEnabled === true
     };
   }
