@@ -12,11 +12,24 @@ namespace WordLens.Native {
     public string Text;
     public double X, Y;
     public long Window;
+    public Rect[] SelectionBounds;
+    public bool? PointWithinRange;
   }
   sealed class CaptureResult {
     public SelectedText Selection;
     public string Reason = "no-provider";
-    public int Nodes, Providers;
+    public int Nodes, Providers, Rejected;
+  }
+  static class SelectionGeometry {
+    public static bool Matches(Rect[] rectangles, bool? pointWithinRange, SelectionCapture.NativePoint point) {
+      if (pointWithinRange == false || rectangles == null) return false;
+      foreach (var original in rectangles) {
+        if (original.IsEmpty || original.Width <= 0 || original.Height <= 0) continue;
+        var bounds = original; bounds.Inflate(8, 8);
+        if (bounds.Contains(new Point(point.X, point.Y))) return true;
+      }
+      return false;
+    }
   }
   // The search policy is shared by the real UIA adapter and synthetic provider tests.
   abstract class SelectionNode {
@@ -47,7 +60,7 @@ namespace WordLens.Native {
         } catch { failed = true; safe = false; }
         if (!safe) continue;
         foreach (var node in path) {
-          try { if (Probe(node, seen, result) || result.Reason == "too-long") return result; } catch { failed = true; }
+          try { if (Probe(node, seen, result, anchor) || result.Reason == "too-long") return result; } catch { failed = true; }
         }
         // PDF providers can be descendants of the hit/focused document wrapper.
         // Never search the whole browser window, other tabs, or desktop.
@@ -65,7 +78,7 @@ namespace WordLens.Native {
             var item = queue.Dequeue(); var node = item.Key;
             try {
               if (!expanded.Add(node.Id) || node.Blocked || !node.AtPoint(anchor)) continue;
-              if (Probe(node, seen, result) || result.Reason == "too-long") return result;
+              if (Probe(node, seen, result, anchor) || result.Reason == "too-long") return result;
               if (item.Value >= 12) continue;
               foreach (var child in node.Children()) {
                 if (queue.Count >= 240) break;
@@ -76,14 +89,16 @@ namespace WordLens.Native {
           if (documents >= 2) break;
         }
       }
-      if (result.Reason != "too-long") result.Reason = result.Providers > 0 ? "no-selection" : blocked ? "protected" : failed ? "provider-error" : "no-provider";
+      if (result.Reason != "too-long") result.Reason = result.Rejected > 0 ? "selection-mismatch" : result.Providers > 0 ? "no-selection" : blocked ? "protected" : failed ? "provider-error" : "no-provider";
       return result;
     }
-    static bool Probe(SelectionNode node, HashSet<string> seen, CaptureResult result) {
+    static bool Probe(SelectionNode node, HashSet<string> seen, CaptureResult result, SelectionCapture.NativePoint anchor) {
       if (!seen.Add(node.Id)) return false;
       result.Nodes++;
+      if (!node.AtPoint(anchor)) return false;
       var selected = node.Read(result);
       if (selected == null) return false;
+      if (!SelectionGeometry.Matches(selected.SelectionBounds, selected.PointWithinRange, anchor)) { result.Rejected++; return false; }
       result.Selection = selected; result.Reason = "selected"; return true;
     }
   }
@@ -132,6 +147,7 @@ namespace WordLens.Native {
       public override bool Document { get { return element.Current.ControlType == ControlType.Document; } }
       public override bool Container { get { var type = element.Current.ControlType; return type == ControlType.Pane || type == ControlType.Custom || type == ControlType.Group; } }
       public override bool AtPoint(NativePoint point) {
+        if (element.Current.IsOffscreen) return false;
         Rect bounds = element.Current.BoundingRectangle;
         if (bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0) return true;
         bounds.Inflate(24, 24); return bounds.Contains(new Point(point.X, point.Y));
@@ -151,17 +167,34 @@ namespace WordLens.Native {
         if (pattern.SupportedTextSelection == SupportedTextSelection.None) return null;
         var ranges = pattern.GetSelection();
         if (ranges == null || ranges.Length > 16) return null;
-        var builder = new StringBuilder(); double x = anchor.X, y = anchor.Y;
+        var selectedRanges = new List<TextPatternRange>(); var rectangles = new List<Rect>();
         foreach (var range in ranges) {
           if (range.CompareEndpoints(TextPatternRangeEndpoint.Start, range, TextPatternRangeEndpoint.End) == 0) continue;
+          selectedRanges.Add(range);
+          try { rectangles.AddRange(range.GetBoundingRectangles()); } catch { }
+        }
+        if (selectedRanges.Count == 0) return null;
+        bool? pointInside = null;
+        try {
+          var caret = pattern.RangeFromPoint(new Point(anchor.X, anchor.Y)); pointInside = false;
+          foreach (var range in selectedRanges)
+            if (caret.CompareEndpoints(TextPatternRangeEndpoint.Start, range, TextPatternRangeEndpoint.Start) >= 0 && caret.CompareEndpoints(TextPatternRangeEndpoint.Start, range, TextPatternRangeEndpoint.End) <= 0) pointInside = true;
+        } catch (ArgumentException) { pointInside = false; } catch { }
+        var bounds = rectangles.ToArray();
+        // Reject stale/background selections BEFORE reading or querying their text.
+        if (!SelectionGeometry.Matches(bounds, pointInside, anchor)) { result.Rejected++; return null; }
+        for (int i = 1; i < selectedRanges.Count; i++)
+          if (selectedRanges[i-1].CompareEndpoints(TextPatternRangeEndpoint.End, selectedRanges[i], TextPatternRangeEndpoint.Start) != 0) { result.Rejected++; return null; }
+        var builder = new StringBuilder(); double x = anchor.X, y = anchor.Y;
+        foreach (var range in selectedRanges) {
           string text = range.GetText(2001) ?? "";
           if (builder.Length + text.Length > 2000) { result.Reason = "too-long"; return null; }
           builder.Append(text);
-          try { Rect[] rectangles = range.GetBoundingRectangles(); if (rectangles.Length > 0) { x = rectangles[0].Left; y = rectangles[0].Bottom; } } catch { }
         }
+        if (bounds.Length > 0) { x = bounds[0].Left; y = bounds[0].Bottom; }
         string selection = builder.ToString().Trim();
         if (selection.Length == 0 || GetForegroundWindow() != window) return null;
-        return new SelectedText { Text = selection, X = x, Y = y, Window = window.ToInt64() };
+        return new SelectedText { Text = selection, X = x, Y = y, Window = window.ToInt64(), SelectionBounds = bounds, PointWithinRange = pointInside };
       }
     }
     static bool InWindow(AutomationElement start, AutomationElement root, string expected) {

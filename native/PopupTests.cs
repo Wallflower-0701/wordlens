@@ -18,8 +18,19 @@ namespace WordLens.Native {
         if (popup.IsDisposed || !popup.Visible) throw new Exception("Popup cannot reopen after user close");
         popup.Close(); Application.DoEvents();
         if (closed!=2) throw new Exception("Repeated close was not handled");
-        return new[] {"close-keeps-popup-reusable","lookup-reopens-after-close"};
+        popup.Prepare("inflected",new SelectedText {Text="studies"});
+        var inflected = new Dictionary<string,object> {{"result",new Dictionary<string,object> {{"status","ok"},{"word","study"},{"kind","word"},{"isBaseForm",true},{"definitions",new[] {"v. 学习"}}}}};
+        popup.Render(inflected,false);
+        if (FindHeading(popup)!="studies") throw new Exception("Dictionary base form replaced selected text");
+        return new[] {"close-keeps-popup-reusable","lookup-reopens-after-close","selected-heading-preserved-for-base-form"};
       } finally { popup.Dispose(); }
+    }
+    static string FindHeading(Control parent) {
+      foreach (Control child in parent.Controls) {
+        if (child.AccessibleName=="所选英文") return child.Text;
+        string value=FindHeading(child); if (value!=null) return value;
+      }
+      return null;
     }
   }
 }

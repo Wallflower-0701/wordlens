@@ -4,6 +4,11 @@ const status = document.getElementById('status');
 const resultBox = document.getElementById('search-result');
 let searchSequence = 0;
 let saveQueue = Promise.resolve();
+function modeHelp() {
+  const copy=controls[4].value==='copy';
+  document.getElementById('copy-help').hidden=!copy;
+  controls[1].disabled=controls[4].value!=='auto';
+}
 
 async function loadSettings() {
   try {
@@ -14,6 +19,7 @@ async function loadSettings() {
     controls[3].checked = settings.onlineTranslation;
     controls[4].value = settings.lookupMode;
     controls[5].checked = settings.nativeEnabled;
+    modeHelp();
   } catch { setStatus('设置读取失败，请重新打开插件面板。', true); }
 }
 
@@ -21,6 +27,7 @@ function setStatus(text, isError = false) { status.textContent = text; status.cl
 controls.forEach(control => {
   control.disabled = true;
   control.addEventListener('change', () => {
+    modeHelp();
     const settings = { enabled: controls[0].checked, trigger: controls[1].value, accent: controls[2].value, onlineTranslation: controls[3].checked, lookupMode: controls[4].value, nativeEnabled: controls[5].checked };
     saveQueue = saveQueue.catch(() => {}).then(async () => {
       try { await chrome.storage.local.set({ settings }); setStatus('设置已保存，已打开的网页会立即生效。'); checkNative(); }
@@ -28,7 +35,7 @@ controls.forEach(control => {
     });
   });
 });
-loadSettings().finally(() => controls.forEach(control => { control.disabled = false; }));
+loadSettings().finally(() => { controls.forEach(control => { control.disabled = false; }); modeHelp(); });
 
 chrome.extension.isAllowedFileSchemeAccess().then(allowed => {
   document.getElementById('file-access-status').textContent = allowed ? '本地 HTML：文件访问已开启' : '本地 HTML：需要开启文件访问';

@@ -18,8 +18,9 @@ const speech = WordLensSpeech.createSpeech(chrome.tts, chrome.runtime);
 let recentPageLookup = null;
 const nativeBridge = WordLensNative.createBridge({ api: chrome, core: WordLensCore, lookup: lookupText, speak,
   recent: async text => {
-    if (!recentPageLookup || Date.now() - recentPageLookup.time > 900 || recentPageLookup.text.toLowerCase() !== text.toLowerCase()) return false;
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (tab?.url?.split(/[?#]/)[0] === chrome.runtime.getURL('reader.html')) return true;
+    if (!recentPageLookup || Date.now() - recentPageLookup.time > 900 || recentPageLookup.text.toLowerCase() !== text.toLowerCase()) return false;
     return tab?.id === recentPageLookup.tab;
   }
 });
