@@ -1,9 +1,14 @@
 'use strict';
-const controls = ['enabled', 'trigger', 'accent', 'onlineTranslation', 'lookupMode', 'nativeEnabled'].map(id => document.getElementById(id));
+const controls = ['enabled', 'trigger', 'accent', 'onlineTranslation', 'lookupMode', 'nativeEnabled', 'autoSpeak'].map(id => document.getElementById(id));
 const status = document.getElementById('status');
 const resultBox = document.getElementById('search-result');
 let searchSequence = 0;
 let saveQueue = Promise.resolve();
+function modeHelp() {
+  const copy=controls[4].value==='copy';
+  document.getElementById('copy-help').hidden=!copy;
+  controls[1].disabled=controls[4].value!=='auto';
+}
 
 async function loadSettings() {
   try {
@@ -14,6 +19,8 @@ async function loadSettings() {
     controls[3].checked = settings.onlineTranslation;
     controls[4].value = settings.lookupMode;
     controls[5].checked = settings.nativeEnabled;
+    controls[6].checked = settings.autoSpeak;
+    modeHelp();
   } catch { setStatus('设置读取失败，请重新打开插件面板。', true); }
 }
 
@@ -21,14 +28,15 @@ function setStatus(text, isError = false) { status.textContent = text; status.cl
 controls.forEach(control => {
   control.disabled = true;
   control.addEventListener('change', () => {
-    const settings = { enabled: controls[0].checked, trigger: controls[1].value, accent: controls[2].value, onlineTranslation: controls[3].checked, lookupMode: controls[4].value, nativeEnabled: controls[5].checked };
+    modeHelp();
+    const settings = { enabled: controls[0].checked, trigger: controls[1].value, accent: controls[2].value, onlineTranslation: controls[3].checked, lookupMode: controls[4].value, nativeEnabled: controls[5].checked, autoSpeak: controls[6].checked };
     saveQueue = saveQueue.catch(() => {}).then(async () => {
       try { await chrome.storage.local.set({ settings }); setStatus('设置已保存，已打开的网页会立即生效。'); checkNative(); }
       catch { setStatus('设置保存失败，请重试。', true); }
     });
   });
 });
-loadSettings().finally(() => controls.forEach(control => { control.disabled = false; }));
+loadSettings().finally(() => { controls.forEach(control => { control.disabled = false; }); modeHelp(); });
 
 chrome.extension.isAllowedFileSchemeAccess().then(allowed => {
   document.getElementById('file-access-status').textContent = allowed ? '本地 HTML：文件访问已开启' : '本地 HTML：需要开启文件访问';
@@ -116,21 +124,24 @@ document.getElementById('search-form').addEventListener('submit', async event =>
     const heading = element('div', 'result-heading');
     const button = element('button', 'pronounce', '听发音');
     button.type = 'button';
-    button.addEventListener('click', async () => {
+    async function pronounce() {
       button.disabled = true;
       setStatus('正在调用本地英语语音…');
       try {
-        const audio = await chrome.runtime.sendMessage({ type: 'speak', word: result.word });
+        const audio = await chrome.runtime.sendMessage({ type: 'speak', word });
         if (ticket !== searchSequence) return;
         setStatus(audio.status === 'ok' ? '本地英语朗读；音标以词典标注为准。' : audio.message, audio.status !== 'ok');
       } catch { if (ticket === searchSequence) setStatus('发音不可用，请检查本地英语语音包。', true); }
       finally { button.disabled = false; }
-    });
+    }
+    button.addEventListener('click', pronounce);
     heading.append(element('h2', result.kind === 'word' ? '' : 'long', result.word), button);
     resultBox.append(heading, element('p', 'phonetic', result.phonetic ? WordLensCore.displayPhonetic(result.phonetic) : (result.kind === 'word' ? '暂无音标' : (result.translation ? '英文 → 简体中文' : '短语释义'))));
     if (result.isBaseForm) resultBox.append(element('p', 'result-note', `“${word}” 的原形释义`));
     result.definitions.forEach(line => resultBox.append(element('p', 'definition', line)));
     resultBox.append(element('p', 'result-note', result.translation ? 'MyMemory 机器翻译 · 仅发送查询文字' : 'ECDICT · 离线英汉词典'));
+    const settings = WordLensCore.sanitizeSettings((await chrome.storage.local.get('settings').catch(() => ({}))).settings);
+    if (ticket === searchSequence && input.kind === 'word' && settings.autoSpeak) void pronounce();
   } catch { if (ticket === searchSequence) resultBox.textContent = '查询失败，请在扩展管理页面重新加载插件。'; }
 });
 

@@ -38,4 +38,25 @@ function pdf(empty = false) {
   output += `trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${start}\n%%EOF\n`;
   return Buffer.from(output);
 }
-module.exports = { zip, presentationFiles, wordFiles, pdf };
+function texLigaturePdf(tex = true) {
+  const stream = value => `<< /Length ${Buffer.byteLength(value)} >>\nstream\n${value}\nendstream`;
+  const widths=Array.from({length:83},(_,i)=>[28,100,110].includes(i+28)?600:0).join(' ');
+  const objects=[
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    `<< /Type /Font /Subtype /Type3 /FontBBox [0 0 1000 1000] /FontMatrix [0.001 0 0 0.001 0 0] /FirstChar 28 /LastChar 110 /Widths [${widths}] /Encoding << /Type /Encoding /Differences [28 /a28 100 /a100 110 /a110] >> /CharProcs << /a28 6 0 R /a100 7 0 R /a110 8 0 R >> /Resources << /Font << /H 9 0 R >> >> >>`,
+    stream('BT /F1 18 Tf 50 740 Td <1C6E64> Tj ET'),
+    stream('600 0 d0 BT /H 1000 Tf (fi) Tj ET'),
+    stream('600 0 d0 BT /H 1000 Tf (d) Tj ET'),
+    stream('600 0 d0 BT /H 1000 Tf (n) Tj ET'),
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    `<< /Creator (${tex?'TeX':'Other'}) /Producer (${tex?'pdfTeX fixture':'Unknown'}) >>`
+  ];
+  let output='%PDF-1.4\n'; const offsets=[0];
+  objects.forEach((object,i)=>{offsets.push(Buffer.byteLength(output));output+=`${i+1} 0 obj\n${object}\nendobj\n`;});
+  const start=Buffer.byteLength(output); output+=`xref\n0 ${objects.length+1}\n0000000000 65535 f \n`;
+  offsets.slice(1).forEach(offset=>{output+=`${String(offset).padStart(10,'0')} 00000 n \n`;});
+  return Buffer.from(output+`trailer\n<< /Size ${objects.length+1} /Root 1 0 R /Info 10 0 R >>\nstartxref\n${start}\n%%EOF\n`);
+}
+module.exports = { zip, presentationFiles, wordFiles, pdf, texLigaturePdf };

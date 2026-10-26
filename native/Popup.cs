@@ -155,8 +155,9 @@ namespace WordLens.Native {
       if (result==null) return;
       string status=Value(result,"status"),word=Value(result,"word"); speak.Enabled=status=="ok";
       if (status=="ok") {
-        SetHeading(word,Value(result,"kind")=="word"); phonetic.Text=Value(result,"displayPhonetic");
+        SetHeading(anchor == null ? word : anchor.Text,Value(result,"kind")=="word"); phonetic.Text=Value(result,"displayPhonetic");
         bool translated=Value(result,"translation")=="True"; caption.Text=translated ? "中文翻译" : "中文释义";
+        if (Value(result,"isBaseForm")=="True") caption.Text="中文释义 · 原形 "+word;
         var lines=new List<string>();
         if (result.TryGetValue("definitions",out raw) && raw is IEnumerable) foreach (object line in (IEnumerable)raw) if (line is string) lines.Add((string)line);
         SetDefinitions(lines); source.Text=translated ? "MyMemory · 仅翻译所选文字" : "ECDICT · 本地离线词典";

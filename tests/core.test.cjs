@@ -93,6 +93,22 @@ test('text input supports phrases and sentences, preserves case and rejects over
   assert.equal(core.sanitizeSettings({ onlineTranslation: false }).onlineTranslation, false);
 });
 
+test('Unicode PDF ligatures remain the selected word while ambiguous control bytes stay invalid', () => {
+  assert.deepEqual(core.normalizeText('ﬁnd'), {text:'find',kind:'word'});
+  assert.equal(core.normalizeWord('oﬃce'),'office');
+  assert.deepEqual(core.normalizeText('The tank is ﬁlled.'),{text:'The tank is filled.',kind:'sentence'});
+  for (const input of ['', '\u001cnd', 'o\u001ece', '\u0000find', 'ﬁ<script>']) assert.equal(core.normalizeText(input),null);
+  assert.equal(core.normalizeText('ﬃ'.repeat(667)),null);
+});
+
+test('Automatic word speech is opt-in and old settings keep the silent lookup default', () => {
+  assert.equal(core.DEFAULTS.autoSpeak,false);
+  for(const settings of [undefined,{}, {enabled:true}, {autoSpeak:false}, {autoSpeak:'true'}, {autoSpeak:1}])
+    assert.equal(core.sanitizeSettings(settings).autoSpeak,false);
+  assert.equal(core.sanitizeSettings({autoSpeak:true,accent:'en-US'}).autoSpeak,true);
+  assert.equal(core.sanitizeSettings({autoSpeak:true,accent:'en-US'}).accent,'en-US');
+});
+
 test('translation chunking respects UTF-8 limits and preserves punctuation and content', () => {
   const encoder = new TextEncoder();
   for (const text of ['... Mr. Smith said: “Hello!” I.e. this is fine.', ('This is a sentence with “quoted” text. ').repeat(40).trim(), 'x'.repeat(1000) + ' end.']) {

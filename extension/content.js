@@ -3,6 +3,7 @@
   if (globalThis.__wordLensActive) return;
   globalThis.__wordLensActive = true;
   const { normalizeText, sanitizeSettings, displayPhonetic } = WordLensCore;
+  const ownReader = location.href.split(/[?#]/)[0] === chrome.runtime.getURL('reader.html');
   let settings = sanitizeSettings();
   let host, shadow, card, body, wordLabel, phoneticLabel, note, speaker;
   let sequence = 0;
@@ -14,6 +15,25 @@
   let pointerSelecting = false;
   let ready = false;
   let speechSequence = 0;
+  let cardPort = null;
+
+  function claimCard() {
+    if (cardPort) return;
+    try {
+      const port = chrome.runtime.connect({ name: 'wordlens-page-card' });
+      cardPort = port;
+      port.onDisconnect.addListener(() => {
+        void chrome.runtime.lastError;
+        if (cardPort === port) cardPort = null;
+      });
+    } catch { /* An extension reload requires refreshing the document. */ }
+  }
+
+  function releaseCard() {
+    const port = cardPort;
+    cardPort = null;
+    if (port) { try { port.disconnect(); } catch {} }
+  }
 
   const style = `
     :host { all: initial !important; position: fixed !important; inset: var(--wl-top, 0px) auto auto var(--wl-left, 0px) !important;
@@ -72,17 +92,22 @@
     phoneticLabel = shadow.querySelector('.phonetic');
     note = shadow.querySelector('.note');
     speaker = shadow.querySelector('.speak');
-    shadow.querySelector('.close').addEventListener('click', hide);
+    shadow.querySelector('.close').addEventListener('click', () => hide(true));
     speaker.addEventListener('click', play);
     // Keep the source selection while using the card with a pointer.
     shadow.addEventListener('mousedown', event => { if (event.button === 0) event.preventDefault(); });
   }
 
   function inside(event) { return host && event.composedPath().includes(host); }
-  function hide() {
+  function hide(keepSelectionOwner = false) {
+    clearTimeout(timer);
     sequence++;
     speechSequence++;
     open = false;
+    // The native mouse hook processes this same click after the DOM click.
+    // Closing the card cancels this selection session, not its duplicate guard.
+    // A fresh gesture outside the card, navigation or settings releases it.
+    if (keepSelectionOwner !== true) releaseCard();
     activeWord = '';
     selectedQuery = '';
     if (!host) return;
@@ -120,12 +145,12 @@
     speaker.disabled = result.status !== 'ok';
     note.classList.remove('error');
     if (result.status === 'ok') {
-      wordLabel.textContent = result.word;
+      wordLabel.textContent = selected;
       wordLabel.classList.toggle('long', result.kind !== 'word');
       shadow.querySelector('.offline').textContent = result.translation ? '联网翻译' : '离线';
       phoneticLabel.textContent = result.phonetic ? displayPhonetic(result.phonetic) : (result.kind === 'word' ? '暂无音标' : (result.translation ? '英文 → 简体中文' : '短语释义'));
-      activeWord = result.word;
-      if (result.isBaseForm) paragraph(`“${selected}” 的原形释义`, 'muted');
+      activeWord = selected;
+      if (result.isBaseForm) paragraph(`原形：${result.word}`, 'muted');
       for (const line of result.definitions) {
         const match = line.match(/^([a-z]{1,6}\.(?:\/[a-z]{1,6}\.)?)\s+(.+)$/);
         const element = paragraph('');
@@ -147,6 +172,7 @@
 
   async function play() {
     if (!activeWord) return;
+    claimCard();
     const ticket = ++speechSequence;
     speaker.disabled = true;
     note.classList.remove('error');
@@ -171,7 +197,7 @@
 
   async function inspect(event, manual = false) {
     if (!ready || !settings.enabled || inside(event)) return;
-    if (!manual && settings.lookupMode !== 'auto') return;
+    if (!manual && settings.lookupMode !== 'auto' && !ownReader) return;
     if (!manual && settings.trigger === 'alt' && !event.altKey) { hide(); return; }
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !selection.rangeCount || editable(selection, event)) { hide(); return; }
@@ -198,11 +224,15 @@
     note.classList.remove('error');
     speaker.disabled = true;
     host.hidden = false;
+    claimCard();
     if (typeof host.showPopover === 'function' && !host.matches(':popover-open')) host.showPopover();
     position();
     try {
       const result = await chrome.runtime.sendMessage({ type: 'lookup', word });
-      if (ticket === sequence && open) render(result, word);
+      if (ticket === sequence && open) {
+        render(result, word);
+        if (settings.autoSpeak && input.kind === 'word' && result.status === 'ok') void play();
+      }
     } catch {
       if (ticket === sequence && open) render({ status: 'error', message: '插件已更新或连接中断，请刷新网页后重试。' }, word);
     }
@@ -221,7 +251,8 @@
   }
 
   document.addEventListener('pointerdown', event => {
-    if (!event.isTrusted || inside(event)) return;
+    if (!event.isTrusted) return;
+    if (inside(event)) { clearTimeout(timer); return; }
     pointerSelecting = true;
     clearTimeout(timer);
     hide();
@@ -235,7 +266,8 @@
   document.addEventListener('pointercancel', () => { pointerSelecting = false; hide(); }, true);
   document.addEventListener('keyup', event => {
     if (!event.isTrusted) return;
-    if (event.key === 'Escape') { clearTimeout(timer); hide(); return; }
+    if (event.key === 'Escape') { hide(true); return; }
+    if (inside(event)) return;
     if (event.shiftKey && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
       scheduleInspect(event, 50);
     }
@@ -250,13 +282,23 @@
   });
   window.addEventListener('scroll', event => { if (open && !inside(event)) hide(); }, true);
   window.addEventListener('resize', hide);
+  window.addEventListener('pagehide', hide);
+  window.addEventListener('blur', hide);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) hide(); });
   window.visualViewport?.addEventListener('resize', hide);
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.settings) { settings = sanitizeSettings(changes.settings.newValue); hide(); }
   });
   chrome.storage.local.get('settings').then(result => { settings = sanitizeSettings(result.settings); ready = true; }).catch(() => { ready = true; });
   chrome.runtime.onMessage.addListener((message, sender, respond) => {
-    if (sender.id !== chrome.runtime.id || message?.type !== 'lookup-selection') return false;
+    if (sender.id !== chrome.runtime.id) return false;
+    if (message?.type === 'page-card-state') {
+      // Reply only from the focused document with a live card. Inactive frames
+      // must not race this response or suppress selection in another app.
+      if (open && host?.isConnected && !host.hidden && document.hasFocus()) respond({ visible: true });
+      return false;
+    }
+    if (message?.type !== 'lookup-selection') return false;
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !normalizeText(selection.toString())) return false;
     inspect({ target: document.activeElement, altKey: false, composedPath: () => [] }, true).then(() => respond({ status: 'handled' }));

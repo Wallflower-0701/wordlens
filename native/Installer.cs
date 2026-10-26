@@ -4,6 +4,7 @@ using System.Linq;
 using System.Drawing;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Web.Script.Serialization;
@@ -12,14 +13,28 @@ using Microsoft.Win32;
 
 namespace WordLens.Native {
   sealed class Installer : Form {
-    public const string HostName = "com.wordlens.selection";
+    public const string HostName = "com.wordlens.selection.v2";
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern uint GetFinalPathNameByHandle(IntPtr handle, StringBuilder path, uint length, uint flags);
+
+    static void VerifyInstallationPath(string executable) {
+      using (var file = File.OpenRead(executable)) {
+        var path = new StringBuilder(32768);
+        uint length = GetFinalPathNameByHandle(file.SafeFileHandle.DangerousGetHandle(), path, (uint)path.Capacity, 0);
+        if (length == 0 || length >= path.Capacity) throw new IOException("无法确认安装位置，未写入浏览器登记。");
+        string actual = path.ToString();
+        if (actual.StartsWith(@"\\?\", StringComparison.Ordinal)) actual = actual.Substring(4);
+        if (!String.Equals(Path.GetFullPath(executable), actual, StringComparison.OrdinalIgnoreCase))
+          throw new IOException("Windows 将辅助程序重定向到了应用专属目录，浏览器无法使用这份安装。请直接在文件资源管理器中双击安装程序或修复连接文件；不要从打包应用的终端启动安装。浏览器登记未更改。");
+      }
+    }
     readonly TextBox extensionId;
     readonly Label status;
     public Installer(string id) {
       Text = "WordLens 原页面增强 · 安装 / 卸载"; Size = new Size(540, 410); StartPosition = FormStartPosition.CenterScreen;
       Font = new Font("Microsoft YaHei UI", 10); BackColor = Color.FromArgb(250, 251, 245); FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false;
       var title = new Label { Text = "在原来的 PDF / PPT 页面查词", Location = new Point(25, 22), Size = new Size(480, 36), Font = new Font(Font, FontStyle.Bold) };
-      var description = new Label { Text = "仅在插件启用后读取 Edge、Chrome、PowerPoint 或 WPS 的当前选区。\n不读取整份文档，不使用剪贴板，不记录输入，不随 Windows 开机启动。\n安装仅注册当前用户的浏览器通信组件，无需管理员权限。", Location = new Point(25, 70), Size = new Size(480, 85) };
+      var description = new Label { Text = "标准模式读取当前选区；PDF 复制模式只读你按 Ctrl+C 新复制的文字。\n复制模式需在插件中主动选择，不读取历史、不改写剪贴板。\n不记录输入、不随开机启动；仅当前用户注册，无需管理员权限。", Location = new Point(25, 70), Size = new Size(480, 85) };
       var label = new Label { Text = "粘贴插件面板中显示的扩展 ID（32 个字母）：", Location = new Point(25, 165), Size = new Size(470, 25) };
       extensionId = new TextBox { Text = id, Location = new Point(25, 195), Size = new Size(470, 28), AccessibleName = "WordLens 扩展 ID" };
       var install = new Button { Text = "安装 / 更新", Location = new Point(25, 244), Size = new Size(140, 35) }; install.Click += delegate { try { Install(extensionId.Text.Trim()); status.Text = "安装完成。请在 Edge 重新加载 WordLens，并启用“原页面增强”。"; } catch (Exception e) { status.Text = e.Message; } };
@@ -43,9 +58,10 @@ namespace WordLens.Native {
     public static void Install(string id) {
       if (!Regex.IsMatch(id ?? "", "^[a-p]{32}$")) throw new InvalidOperationException("请输入插件面板显示的 32 位扩展 ID。");
       Directory.CreateDirectory(DirectoryPath);
-      string executable = Path.Combine(DirectoryPath, "WordLens.Native.exe");
+      string executable = Path.Combine(DirectoryPath, "WordLens.Native-v2.exe");
       string running = Assembly.GetExecutingAssembly().Location;
       if (!String.Equals(Path.GetFullPath(running), Path.GetFullPath(executable), StringComparison.OrdinalIgnoreCase)) File.Copy(running, executable, true);
+      VerifyInstallationPath(executable);
       string manifest = Path.Combine(DirectoryPath, HostName + ".json");
       var origins = new HashSet<string>(StringComparer.Ordinal) { "chrome-extension://" + id + "/" };
       if (File.Exists(manifest)) {
@@ -85,7 +101,9 @@ namespace WordLens.Native {
         if (!Installer.OriginInManifest(origin, manifest) || Installer.OriginInManifest("chrome-extension://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/", manifest)) throw new Exception("Manifest origin validation"); passed++;
         string[] selectionChecks = SelectionTests.Run();
         string[] popupChecks = PopupTests.Run();
-        Protocol.Write(Console.OpenStandardOutput(), new { type = "self-test", passed = passed + selectionChecks.Length + popupChecks.Length, selectionChecks = selectionChecks, popupChecks = popupChecks }); return 0;
+        string[] copyChecks = CopySelection.Tests();
+        string[] gestureChecks = SelectionGesture.Tests();
+        Protocol.Write(Console.OpenStandardOutput(), new { type = "self-test", passed = passed + selectionChecks.Length + popupChecks.Length + copyChecks.Length + gestureChecks.Length, selectionChecks = selectionChecks, popupChecks = popupChecks, copyChecks=copyChecks, gestureChecks=gestureChecks }); return 0;
       } catch (Exception error) { Protocol.Write(Console.OpenStandardOutput(), new { type = "self-test", error = error.Message }); return 1; }
     }
   }

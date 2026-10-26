@@ -3,6 +3,7 @@ const input = document.getElementById('file');
 const message = document.getElementById('message');
 const content = document.getElementById('page-content');
 const select = document.getElementById('page');
+const pdfMode = document.getElementById('pdf-mode'), pdfZoom = document.getElementById('pdf-zoom');
 let model = null, current = 0, sequence = 0;
 let pdfLibrary;
 
@@ -15,8 +16,19 @@ function buttons(loading) {
 async function renderPage(index, ticket = ++sequence) {
   if (!model || index < 0 || index >= model.count) return;
   current = index; select.value = String(index);
-  buttons(true); content.replaceChildren(); status('正在提取本页文字…');
+  model.cancel?.();
+  const original = model.kind === 'pdf' && pdfMode.value === 'original';
+  content.classList.toggle('pdf-original', original);
+  document.getElementById('zoom-control').hidden = !original;
+  document.getElementById('mode-label').textContent = original ? 'PDF 原排版 · 选中即查' : '文字阅读版 · 选中即查';
+  buttons(true); content.replaceChildren(); status(original ? '正在绘制原版 PDF…' : '正在提取本页文字…');
   try {
+    if (original) {
+      const hasText = await model.render(index, content, pdfZoom.value);
+      if (ticket !== sequence) return;
+      status(hasText ? '双击英文单词，或拖选短语、句子即可查词。原排版与文件保持不变。' : '本页没有可选文字；扫描图片暂不支持划词。');
+      return;
+    }
     const lines = await model.page(index);
     if (ticket !== sequence) return;
     const fragment = document.createDocumentFragment();
@@ -42,12 +54,17 @@ async function pdfDocument(bytes) {
   const workerFailure = new Promise((_, reject) => { rejectWorker = reject; });
   const onWorkerError = () => { worker.destroy(); port.terminate(); rejectWorker(new Error('PDF 组件启动失败，请重新加载插件后再试。')); };
   port.addEventListener('error', onWorkerError);
-  const task = pdfjs.getDocument({ data: bytes, worker, isEvalSupported: false, useWasm: false, enableXfa: false,
+  const task = pdfjs.getDocument({ data: bytes, worker, isEvalSupported: false, useWasm: false, enableXfa: false, fontExtraProperties: true,
     cMapUrl: chrome.runtime.getURL('vendor/pdfjs/cmaps/'), cMapPacked: true,
     standardFontDataUrl: chrome.runtime.getURL('vendor/pdfjs/standard_fonts/'),
     useWorkerFetch: false });
-  let pdf, timer;
+  let pdf, timer, drawing = null, renderSequence = 0;
+  function cancelDrawing() {
+    renderSequence++;
+    drawing?.canvas?.cancel(); drawing?.text?.cancel(); drawing=null;
+  }
   async function destroy() {
+    cancelDrawing();
     clearTimeout(timer); port.removeEventListener('error', onWorkerError);
     try { await task.destroy(); } finally { worker.destroy(); port.terminate(); }
   }
@@ -60,10 +77,45 @@ async function pdfDocument(bytes) {
     if (error.name === 'PasswordException') throw new Error('PDF 有密码保护，请先另存为未加密副本。');
     throw new Error(error.name === 'InvalidPDFException' ? 'PDF 文件不完整或已损坏。' : (error.message || 'PDF 读取失败。'));
   }
-  return { count: pdf.numPages, unit: '页', destroy,
+  const info = (await pdf.getMetadata().catch(() => ({info:null}))).info;
+  return { count: pdf.numPages, unit: '页', kind: 'pdf', destroy, cancel: cancelDrawing,
+    async render(index, host, zoom) {
+      cancelDrawing(); const ticket=renderSequence;
+      const page=await pdf.getPage(index+1);
+      try {
+        if(ticket!==renderSequence)return false;
+        const base=page.getViewport({scale:1});
+        const scale=zoom==='fit' ? Math.max(0.1,(host.clientWidth-2)/base.width) : Number(zoom);
+        const viewport=page.getViewport({scale:Math.min(3,Math.max(0.1,scale))});
+        const pixelRatio=Math.min(devicePixelRatio||1,2,Math.sqrt(16000000/(viewport.width*viewport.height)));
+        const sheet=document.createElement('div');sheet.className='pdf-sheet';
+        sheet.style.width=viewport.width+'px';sheet.style.height=viewport.height+'px';
+        const canvas=document.createElement('canvas');canvas.setAttribute('aria-hidden','true');
+        canvas.width=Math.max(1,Math.ceil(viewport.width*pixelRatio));canvas.height=Math.max(1,Math.ceil(viewport.height*pixelRatio));
+        canvas.style.width=viewport.width+'px';canvas.style.height=viewport.height+'px';
+        const layer=document.createElement('div');layer.className='textLayer';layer.setAttribute('aria-label','PDF 可选文字');
+        const totalScale=viewport.scale*page.userUnit;
+        layer.style.setProperty('--total-scale-factor',totalScale);
+        sheet.append(canvas,layer);host.replaceChildren(sheet);
+        const current={canvas:page.render({canvasContext:canvas.getContext('2d'),viewport,transform:[pixelRatio,0,0,pixelRatio,0,0]}),text:null};drawing=current;
+        const outcomes=await Promise.allSettled([current.canvas.promise,WordLensPdfText.pageText(page,pdfjs,info)]);
+        if(ticket!==renderSequence)return false;
+        for(const result of outcomes)if(result.status==='rejected')throw result.reason;
+        const text=outcomes[1].value;
+        current.text=new pdfjs.TextLayer({textContentSource:text,container:layer,viewport});
+        // PDF.js exposes unrotated text coordinates. Rotate only this layer,
+        // keeping the bitmap at the exact PDF viewport dimensions.
+        layer.style.width=viewport.rawDims.pageWidth*totalScale+'px';
+        layer.style.height=viewport.rawDims.pageHeight*totalScale+'px';
+        const rotation=viewport.rotation;
+        layer.style.transform=rotation===90 ? `translateX(${viewport.width}px) rotate(90deg)` : rotation===180 ? `translate(${viewport.width}px,${viewport.height}px) rotate(180deg)` : rotation===270 ? `translateY(${viewport.height}px) rotate(270deg)` : '';
+        await current.text.render();
+        return text.items.some(item=>typeof item.str==='string' && item.str.trim());
+      } finally { page.cleanup(); }
+    },
     async page(index) {
       const page = await pdf.getPage(index + 1);
-      try { const text = await page.getTextContent(); return D.pdfLines(text.items); }
+      try { const text = await WordLensPdfText.pageText(page, pdfjs, info); return D.pdfLines(text.items); }
       finally { page.cleanup(); }
     }
   };
@@ -71,6 +123,7 @@ async function pdfDocument(bytes) {
 async function showDocument(next, name, ticket) {
   if (ticket !== sequence) { await next.destroy(); return; }
   model = next; current = 0;
+  document.getElementById('pdf-controls').hidden=next.kind!=='pdf';
   document.getElementById('welcome').hidden = true;
   document.getElementById('document').hidden = false;
   document.getElementById('file-name').textContent = name;
@@ -106,6 +159,13 @@ async function openFile(file) {
 document.getElementById('open-file').addEventListener('click', () => input.click());
 input.addEventListener('change', () => { const file = input.files[0]; input.value = ''; openFile(file); });
 select.addEventListener('change', () => renderPage(Number(select.value)));
+pdfMode.addEventListener('change',()=>renderPage(current));
+pdfZoom.addEventListener('change',()=>renderPage(current));
+let resizeTimer;
+window.addEventListener('resize',()=>{
+  clearTimeout(resizeTimer);
+  if(model?.kind==='pdf' && pdfMode.value==='original' && pdfZoom.value==='fit')resizeTimer=setTimeout(()=>renderPage(current),200);
+});
 document.getElementById('previous').addEventListener('click', () => renderPage(current - 1));
 document.getElementById('next').addEventListener('click', () => renderPage(current + 1));
 document.getElementById('open-example').addEventListener('click', async () => {

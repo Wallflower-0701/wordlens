@@ -26,7 +26,9 @@
     <section class="settings" aria-label="阅读偏好">
       <h2 class="section-label">阅读偏好</h2>
       <label class="setting-row"><span><strong>启用查词浮窗</strong><small>选中英文时显示音标与释义</small></span><span class="switch"><input id="enabled" type="checkbox" role="switch"><span class="track"></span></span></label>
-      <label class="setting-row"><span><strong>查词模式</strong><small>选择顺手的查询方式</small></span><select id="lookupMode" aria-label="查词模式"><option value="auto">选中即查</option><option value="shortcut">快捷键查词</option><option value="context">右键查词</option></select></label>
+      <label class="setting-row"><span><strong>单词自动朗读</strong><small>查到单词后自动发音，默认关闭</small></span><span class="switch"><input id="autoSpeak" type="checkbox" role="switch"><span class="track"></span></span></label>
+      <label class="setting-row"><span><strong>查词模式</strong><small>PDF 取词不准时用复制模式</small></span><select id="lookupMode" aria-label="查词模式"><option value="auto">选中即查</option><option value="shortcut">快捷键查词</option><option value="context">右键查词</option><option value="copy">复制查词（PDF 兼容）</option></select></label>
+      <p id="copy-help" class="status" hidden>选中英文后按 Ctrl+C 即查。仅在此模式读取刚在 Edge、Chrome、PowerPoint 或 WPS 复制的文字；不读历史、不改写剪贴板。需开启原页面增强。联网翻译设置仍适用。</p>
       <label class="setting-row"><span><strong>触发方式</strong><small>仅用于“选中即查”模式</small></span><select id="trigger" aria-label="触发方式"><option value="selection">直接选中</option><option value="alt">Alt + 选中</option></select></label>
     </section>
 
@@ -40,7 +42,7 @@
     </div></details>
     <p id="status" class="status" role="status">离线词典优先 · 联网时仅翻译所选文字</p>
   </main>
-  <footer class="popup-footer"><span>v1.3.2</span><span>Enter 查询 · Shift + Enter 换行</span><a id="guide-link" href="guide.html" target="_blank" class="sr-only">指南</a></footer>
+  <footer class="popup-footer"><span>v1.3.12</span><span>Enter 查询 · Shift + Enter 换行</span><a id="guide-link" href="guide.html" target="_blank" class="sr-only">指南</a></footer>
   <script src="core.js"></script><script src="selection-menu.js"></script><script src="popup.js"></script>
 </body>
 </html>

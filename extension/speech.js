@@ -15,6 +15,7 @@
     return candidates.find(voice => !voice.extensionId) || candidates[0];
   }
   function createSpeech(tts, runtime, { delay = ms => new Promise(resolve => setTimeout(resolve, ms)), timeoutMs = 12000, voiceTimeoutMs = 3000 } = {}) {
+    let speechSequence = 0;
     function getVoices() {
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error('语音列表读取超时，请重启浏览器后重试。')), voiceTimeoutMs);
@@ -49,9 +50,11 @@
       } catch (error) { return { status: 'error', message: error.message }; }
     }
     async function speak(text, accent) {
+      const ticket = ++speechSequence;
       let voice;
       try { voice = chooseVoice(await discover(accent), accent); }
       catch (error) { return { status: 'error', message: error.message }; }
+      if (ticket !== speechSequence) return { status: 'cancelled', message: '已切换到新的朗读请求。' };
       if (!voice) return { status: 'unavailable', message: MISSING_MESSAGE };
       return new Promise(resolve => {
         let finished = false;
