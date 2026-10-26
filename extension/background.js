@@ -16,9 +16,13 @@ const dictionary = WordLensCore.createDictionary(async key => {
 const translator = WordLensTranslation.createTranslator();
 const speech = WordLensSpeech.createSpeech(chrome.tts, chrome.runtime);
 let recentPageLookup = null;
+// A port belongs to one live document, including subframes, and is released on
+// card close or navigation. Broadcast replies can be won by an unrelated frame.
+const pageCards = new Set();
 const nativeBridge = WordLensNative.createBridge({ api: chrome, core: WordLensCore, lookup: lookupText, speak,
   recent: async text => {
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if ([...pageCards].some(port => port.sender.tab.id === tab?.id)) return true;
     if (tab?.url?.split(/[?#]/)[0] === chrome.runtime.getURL('reader.html')) return true;
     if (tab?.id !== undefined) {
       try {
@@ -28,9 +32,19 @@ const nativeBridge = WordLensNative.createBridge({ api: chrome, core: WordLensCo
         if (card?.visible === true) return true;
       } catch { /* Protected viewers have no content script; use native lookup. */ }
     }
-    if (!recentPageLookup || Date.now() - recentPageLookup.time > 900 || recentPageLookup.text.toLowerCase() !== text.toLowerCase()) return false;
+    if (!recentPageLookup || !text || Date.now() - recentPageLookup.time > 900 || recentPageLookup.text.toLowerCase() !== text.toLowerCase()) return false;
     return tab?.id === recentPageLookup.tab;
   }
+});
+chrome.runtime.onConnect.addListener(port => {
+  if (port.name !== 'wordlens-page-card' || port.sender?.id !== chrome.runtime.id || !Number.isInteger(port.sender?.tab?.id)) return;
+  pageCards.add(port);
+  port.onDisconnect.addListener(() => pageCards.delete(port));
+  // Also cancel a native lookup that started before the web card opened, or
+  // dismiss a native card that already won the first-selection race.
+  chrome.tabs.query({ active: true, lastFocusedWindow: true }).then(([tab]) => {
+    if (pageCards.has(port) && tab?.id === port.sender.tab.id) nativeBridge.dismiss();
+  }).catch(() => {});
 });
 const settingsReady = chrome.storage.local.get('settings').then(({ settings }) => nativeBridge.configure(settings)).catch(() => {});
 async function lookupText(value) {

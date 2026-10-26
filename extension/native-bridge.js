@@ -93,7 +93,10 @@
       } else if (value.type === 'speak' && active?.id === value.requestId) {
         await pronounce(connected, generation, active.id);
       } else if (value.type === 'capture-empty') {
-        generation++; active = null;
+        const ticket = ++generation; active = null;
+        const pageVisible = await recent('');
+        if (ticket !== generation || connected !== port) return;
+        if (pageVisible) { post({ type: 'dismiss' }); return; }
         if (/^[a-f0-9]{32}$/.test(value.requestId || '')) post({ type: 'result', requestId: value.requestId,
           result: { status: 'error', message: '没有读到所选文字。请先选中英文后重试；扫描图片、受保护文档或未暴露文字的画布暂时无法取词。' } });
         else post({ type: 'dismiss' });
@@ -127,7 +130,8 @@
       return status();
     }
     function capture() { return state === 'ready' && post({ type: 'capture' }); }
-    return { configure, status, capture, stop };
+    function dismiss() { generation++; active = null; if (state === 'ready') post({ type: 'dismiss' }); }
+    return { configure, status, capture, dismiss, stop };
   }
   const api = { HOST, createBridge };
   if (typeof module === 'object' && module.exports) module.exports = api;

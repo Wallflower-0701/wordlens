@@ -1,6 +1,73 @@
 'use strict';
 const test = require('node:test'), assert = require('node:assert/strict');
 const { background, tick } = require('./background-harness.cjs');
+function cardOwner(h, tabId = 7, frameId = 0, senderId = 'test') {
+  const listeners = [];
+  const port = { name: 'wordlens-page-card', sender: { id: senderId, tab: { id: tabId }, frameId },
+    onDisconnect: { addListener(fn) { listeners.push(fn); } },
+    disconnect() { listeners.forEach(fn => fn()); } };
+  h.chrome.runtime.onConnect.emit(port);
+  return port;
+}
+
+test('A live HTML card owns lookup across missing broadcast replies, focus changes and delayed speech clicks', async t => {
+  for (const reply of [async () => undefined, async () => { throw Error('No response'); }]) {
+    const h = await background({ nativeEnabled: true });
+    t.after(() => h.chrome.storage.onChanged.emit({ settings: { newValue: {} } }, 'local'));
+    h.chrome.tabs.sendMessage = reply;
+    const p = h.ports[0]; await p.onMessage.emit({ type: 'ready', version: '1.3.4' });
+    const owner = cardOwner(h, 7, 12); await tick();
+    h.advance(60000);
+    await h.dispatch({ type: 'speak', word: 'Basic' }, { id: 'test', tab: { id: 7 } });
+    for (const message of [
+      { type: 'selection', requestId: 'a'.repeat(32), text: 'unrelated' },
+      { type: 'capture-empty', requestId: 'b'.repeat(32) }
+    ]) { await p.onMessage.emit(message); await tick(); assert.equal(p.sent.at(-1).type, 'dismiss'); }
+    assert.deepEqual(h.spoken, ['Basic']); assert.equal(p.sent.filter(x => x.type === 'result').length, 0);
+    owner.disconnect();
+    await p.onMessage.emit({ type: 'selection', requestId: 'c'.repeat(32), text: 'Basic' });
+    for (let i = 0; i < 30 && !p.sent.some(x => x.type === 'result'); i++) await new Promise(r => setTimeout(r, 10));
+    assert.equal(p.sent.at(-1).result.query, 'basic');
+  }
+});
+
+test('Opening a web card dismisses an already rendered native card and blocks its speech button', async t => {
+  const h = await background({ nativeEnabled: true });
+  t.after(() => h.chrome.storage.onChanged.emit({ settings: { newValue: {} } }, 'local'));
+  const p = h.ports[0]; await p.onMessage.emit({ type: 'ready', version: '1.3.4' });
+  await p.onMessage.emit({ type: 'selection', requestId: 'a'.repeat(32), text: 'Basic' });
+  for (let i = 0; i < 30 && !p.sent.some(x => x.type === 'result'); i++) await new Promise(r => setTimeout(r, 10));
+  assert.equal(p.sent.at(-1).type, 'result');
+  cardOwner(h); await tick(); assert.equal(p.sent.at(-1).type, 'dismiss');
+  await p.onMessage.emit({ type: 'speak', requestId: 'a'.repeat(32) }); await tick();
+  assert.deepEqual(h.spoken, []);
+});
+
+test('Only trusted active-tab card ports suppress native lookup; closing one frame preserves other owners', async t => {
+  const h = await background({ nativeEnabled: true });
+  t.after(() => h.chrome.storage.onChanged.emit({ settings: { newValue: {} } }, 'local'));
+  const p = h.ports[0]; await p.onMessage.emit({ type: 'ready', version: '1.3.4' });
+  cardOwner(h, 8); cardOwner(h, 7, 0, 'other-extension'); await tick();
+  assert.equal(p.sent.filter(x => x.type === 'dismiss').length, 0);
+  await p.onMessage.emit({ type: 'capture-empty', requestId: 'a'.repeat(32) }); await tick();
+  assert.equal(p.sent.at(-1).type, 'result');
+  const first = cardOwner(h, 7, 0), second = cardOwner(h, 7, 12); await tick();
+  first.disconnect();
+  await p.onMessage.emit({ type: 'capture-empty', requestId: 'b'.repeat(32) }); await tick();
+  assert.equal(p.sent.at(-1).type, 'dismiss');
+  second.disconnect();
+  await p.onMessage.emit({ type: 'capture-empty', requestId: 'c'.repeat(32) }); await tick();
+  assert.equal(p.sent.at(-1).type, 'result');
+});
+
+test('Closing a card before its active-tab check resolves cannot dismiss a later native card', async t => {
+  const h = await background({ nativeEnabled: true });
+  t.after(() => h.chrome.storage.onChanged.emit({ settings: { newValue: {} } }, 'local'));
+  const p = h.ports[0]; await p.onMessage.emit({ type: 'ready', version: '1.3.4' });
+  let release; h.chrome.tabs.query = () => new Promise(resolve => { release = resolve; });
+  const owner = cardOwner(h); owner.disconnect(); release([{ id: 7 }]); await tick();
+  assert.equal(p.sent.filter(x => x.type === 'dismiss').length, 0);
+});
 test('The actual service worker does not permit a page content script to connect or inspect the native host', async () => {
   const h = await background();
   const result = await h.dispatch({ type: 'native-reconnect' }, { id: 'test', url: 'https://example.com/', tab: { id: 7 } });

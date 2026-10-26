@@ -6,7 +6,7 @@ function event() { const listeners = []; return { addListener(fn) { listeners.pu
 async function background(settings = {}, backgroundSource) {
   const ports = [], windows = [], spoken = []; const local = { settings }; let now = Date.now();
   const chrome = { runtime: { id: 'test', getURL: file => 'chrome-extension://test/' + file,
-    onMessage: event(), onStartup: event(), onInstalled: event(), connectNative() {
+    onMessage: event(), onConnect: event(), onStartup: event(), onInstalled: event(), connectNative() {
       const p = { onMessage: event(), onDisconnect: event(), sent: [], postMessage(m) { this.sent.push(m); }, disconnect() { this.onDisconnect.emit(); } }; ports.push(p); return p;
     } },
     storage: { local: { async get() { return local; }, async set(v) { Object.assign(local, v); } }, session: { async get() { return {}; }, async set() {}, async remove() {} }, onChanged: event() },

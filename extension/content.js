@@ -15,6 +15,25 @@
   let pointerSelecting = false;
   let ready = false;
   let speechSequence = 0;
+  let cardPort = null;
+
+  function claimCard() {
+    if (cardPort) return;
+    try {
+      const port = chrome.runtime.connect({ name: 'wordlens-page-card' });
+      cardPort = port;
+      port.onDisconnect.addListener(() => {
+        void chrome.runtime.lastError;
+        if (cardPort === port) cardPort = null;
+      });
+    } catch { /* An extension reload requires refreshing the document. */ }
+  }
+
+  function releaseCard() {
+    const port = cardPort;
+    cardPort = null;
+    if (port) { try { port.disconnect(); } catch {} }
+  }
 
   const style = `
     :host { all: initial !important; position: fixed !important; inset: var(--wl-top, 0px) auto auto var(--wl-left, 0px) !important;
@@ -84,6 +103,7 @@
     sequence++;
     speechSequence++;
     open = false;
+    releaseCard();
     activeWord = '';
     selectedQuery = '';
     if (!host) return;
@@ -148,6 +168,7 @@
 
   async function play() {
     if (!activeWord) return;
+    claimCard();
     const ticket = ++speechSequence;
     speaker.disabled = true;
     note.classList.remove('error');
@@ -199,6 +220,7 @@
     note.classList.remove('error');
     speaker.disabled = true;
     host.hidden = false;
+    claimCard();
     if (typeof host.showPopover === 'function' && !host.matches(':popover-open')) host.showPopover();
     position();
     try {
@@ -254,6 +276,7 @@
   });
   window.addEventListener('scroll', event => { if (open && !inside(event)) hide(); }, true);
   window.addEventListener('resize', hide);
+  window.addEventListener('pagehide', hide);
   window.visualViewport?.addEventListener('resize', hide);
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.settings) { settings = sanitizeSettings(changes.settings.newValue); hide(); }

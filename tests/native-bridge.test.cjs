@@ -57,6 +57,25 @@ test('A web card appearing during native lookup wins, and its dismissed native r
   p.onMessage.emit({type:'speak',requestId:id('b')});await tick();assert.equal(h.spoken.length,0);
 });
 
+test('A web card claim cancels native lookup even if its pending owner check reports an old state', async t => {
+  let release;
+  const h = harness({ recent: () => new Promise(resolve => { release = resolve; }) });
+  t.after(() => h.bridge.stop()); const p = h.connect();
+  p.onMessage.emit({ type: 'selection', requestId: id('a'), text: 'Basic' }); await tick();
+  h.bridge.dismiss(); release(false); await tick();
+  assert.equal(p.sent.at(-1).type, 'dismiss'); assert.equal(h.queries.length, 0);
+});
+
+test('An empty-capture owner check cannot overwrite a newer native selection', async t => {
+  let release;
+  const h = harness({ recent: text => text ? Promise.resolve(false) : new Promise(resolve => { release = resolve; }) });
+  t.after(() => h.bridge.stop()); const p = h.connect();
+  p.onMessage.emit({ type: 'capture-empty', requestId: id('a') }); await tick();
+  p.onMessage.emit({ type: 'selection', requestId: id('b'), text: 'Basic' }); await tick();
+  release(true); await tick();
+  assert.equal(p.sent.at(-1).type, 'result'); assert.equal(p.sent.at(-1).requestId, id('b'));
+});
+
 test('Disabling native lookup during its final web-card check discards the pending result', async t => {
   let calls=0, release;
   const h=harness({recent:()=>++calls===1?Promise.resolve(false):new Promise(resolve=>{release=resolve;})});

@@ -1,6 +1,6 @@
 {
   "name": "wordlens-extension",
-  "version": "1.3.6",
+  "version": "1.3.7",
   "private": true,
   "description": "Offline English-Chinese dictionary and selection translation for Chrome and Edge.",
   "license": "MIT",
