@@ -19,6 +19,7 @@ let recentPageLookup = null;
 // A port belongs to one live document, including subframes, and is released on
 // card close or navigation. Broadcast replies can be won by an unrelated frame.
 const pageCards = new Set();
+let webOwnerTab = null;
 const nativeBridge = WordLensNative.createBridge({ api: chrome, core: WordLensCore, lookup: lookupText, speak,
   recent: async text => {
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
@@ -36,14 +37,34 @@ const nativeBridge = WordLensNative.createBridge({ api: chrome, core: WordLensCo
     return tab?.id === recentPageLookup.tab;
   }
 });
+function claimWebTab(tabId) {
+  webOwnerTab = tabId;
+  nativeBridge.setWebOwned(true);
+}
+function releaseWebTab() {
+  webOwnerTab = null;
+  nativeBridge.setWebOwned(false);
+}
+chrome.tabs.onActivated.addListener(({ tabId }) => { if (webOwnerTab !== tabId) releaseWebTab(); });
+chrome.tabs.onUpdated.addListener((tabId, change) => {
+  if (tabId === webOwnerTab && change.status === 'loading') releaseWebTab();
+});
+chrome.tabs.onRemoved.addListener(tabId => { if (tabId === webOwnerTab) releaseWebTab(); });
+chrome.windows.onFocusChanged.addListener(() => releaseWebTab());
 chrome.runtime.onConnect.addListener(port => {
   if (port.name !== 'wordlens-page-card' || port.sender?.id !== chrome.runtime.id || !Number.isInteger(port.sender?.tab?.id)) return;
   pageCards.add(port);
-  port.onDisconnect.addListener(() => pageCards.delete(port));
+  port.onDisconnect.addListener(() => {
+    pageCards.delete(port);
+    if (webOwnerTab === port.sender.tab.id && ![...pageCards].some(p => p.sender.tab.id === webOwnerTab)) releaseWebTab();
+  });
   // Also cancel a native lookup that started before the web card opened, or
   // dismiss a native card that already won the first-selection race.
   chrome.tabs.query({ active: true, lastFocusedWindow: true }).then(([tab]) => {
-    if (pageCards.has(port) && tab?.id === port.sender.tab.id) nativeBridge.dismiss();
+    if (pageCards.has(port) && tab?.id === port.sender.tab.id) {
+      claimWebTab(port.sender.tab.id);
+      nativeBridge.dismiss();
+    }
   }).catch(() => {});
 });
 const settingsReady = chrome.storage.local.get('settings').then(({ settings }) => nativeBridge.configure(settings)).catch(() => {});
@@ -87,6 +108,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!['lookup', 'speak'].includes(message.type)) return false;
   const input = WordLensCore.normalizeText(message.word);
   if (!input) { sendResponse({ status: 'invalid', message: '请选择英文单词、短语或句子（最多 2000 个字符）。' }); return false; }
+  // Use the same established message path as lookup/speech, even if a card's
+  // long-lived connection was interrupted. No active-tab broadcast is needed.
+  if (Number.isInteger(sender.tab?.id)) claimWebTab(sender.tab.id);
   if (message.type === 'lookup' && sender.tab) recentPageLookup = { text: input.text, tab: sender.tab.id, time: Date.now() };
   const operation = message.type === 'lookup' ? lookupText(input.text) : speak(input.text);
   operation.then(sendResponse).catch(() => sendResponse({ status: 'error', message: '读取失败，请在扩展管理页面重新加载插件，并刷新网页。' }));

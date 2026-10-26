@@ -101,7 +101,9 @@ test('Closing or pressing Escape cancels queued HTML inspection instead of reope
 });
 
 test('HTML ownership ends when the document leaves, settings change or the underlying selection disappears', async () => {
-  for (const close of [h => h.window.emit('pagehide'), h => h.settings(), h => { h.selection.isCollapsed = true; return h.document.emit('selectionchange'); }]) {
+  for (const close of [h => h.window.emit('pagehide'), h => h.window.emit('blur'),
+    h => { h.document.hidden = true; return h.document.emit('visibilitychange'); },
+    h => h.settings(), h => { h.selection.isCollapsed = true; return h.document.emit('selectionchange'); }]) {
     const h = await page(); await h.lookup(); await close(h);
     assert.equal(h.ports[0].disconnected, true); assert.equal(h.card().hidden, true);
   }

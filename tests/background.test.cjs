@@ -10,6 +10,24 @@ function cardOwner(h, tabId = 7, frameId = 0, senderId = 'test') {
   return port;
 }
 
+test('The lookup and speech message path suspends native capture without a port or broadcast response', async t => {
+  const h=await background({nativeEnabled:true,lookupMode:'auto'});
+  t.after(()=>h.chrome.storage.onChanged.emit({settings:{newValue:{}}},'local'));
+  const p=h.ports[0];await p.onMessage.emit({type:'ready',version:'1.3.9'});
+  for(const type of ['lookup','speak']) {
+    await h.dispatch({type,word:'Basic'},{id:'test',tab:{id:7}});
+    assert.equal(p.sent.at(-1).type,'configure');assert.equal(p.sent.at(-1).mode,'context');
+    await p.onMessage.emit({type:'selection',requestId:'a'.repeat(32),text:'Basic'});await tick();
+    assert.equal(p.sent.filter(x=>x.type==='result').length,0);
+    await h.chrome.tabs.onActivated.emit({tabId:8});assert.equal(p.sent.at(-1).mode,'auto');
+  }
+  for(const release of [()=>h.chrome.tabs.onUpdated.emit(7,{status:'loading'}),
+    ()=>h.chrome.tabs.onRemoved.emit(7),()=>h.chrome.windows.onFocusChanged.emit(-1)]) {
+    await h.dispatch({type:'lookup',word:'Basic'},{id:'test',tab:{id:7}});
+    await release();assert.equal(p.sent.at(-1).mode,'auto');
+  }
+});
+
 test('A live HTML card owns lookup across missing broadcast replies, focus changes and delayed speech clicks', async t => {
   for (const reply of [async () => undefined, async () => { throw Error('No response'); }]) {
     const h = await background({ nativeEnabled: true });
@@ -148,11 +166,12 @@ test('An HTML speaker click long after lookup keeps the web card and dismisses d
     assert.equal(speech.status,'ok');assert.deepEqual(h.spoken,['Basic']);
     for (const [digit,text] of [['d','Basic'],['e','unrelated']]) {
       await p.onMessage.emit({type:'selection',requestId:digit.repeat(32),text});await tick();
-      assert.equal(p.sent.at(-1).type,'dismiss');
+      assert.equal(p.sent.at(-1).type,'configure'); assert.equal(p.sent.at(-1).mode,'context');
     }
     assert.equal(p.sent.filter(x=>x.type==='result').length,0);
     // Closing the web card (or navigating to a protected viewer) restores native lookup.
     visible=false;
+    await h.chrome.tabs.onUpdated.emit(7,{status:'loading'});
     await p.onMessage.emit({type:'selection',requestId:'f'.repeat(32),text:'Basic'});
     for(let i=0;i<20 && !p.sent.some(x=>x.type==='result');i++)await new Promise(resolve=>setTimeout(resolve,10));
     assert.equal(p.sent.at(-1).type,'result');assert.equal(p.sent.at(-1).result.query,'basic');

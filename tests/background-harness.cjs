@@ -13,8 +13,8 @@ async function background(settings = {}, backgroundSource) {
     tts: { getVoices(done) { done([{voiceName:'Test local',lang:'en-US',remote:false}]); },
       speak(text, options, done) { spoken.push(text); options.onEvent({type:'start'}); done(); } },
     contextMenus: { onClicked: event(), async removeAll() {}, create() {} }, commands: { onCommand: event() },
-    tabs: { async query() { return [{ id: 7 }]; }, async sendMessage() { throw Error('Protected PDF has no content script'); }, async create() {} },
-    windows: { async create(value) { windows.push(value); } } };
+    tabs: { onActivated: event(), onUpdated: event(), onRemoved: event(), async query() { return [{ id: 7 }]; }, async sendMessage() { throw Error('Protected PDF has no content script'); }, async create() {} },
+    windows: { onFocusChanged: event(), async create(value) { windows.push(value); } } };
   const context = vm.createContext({ chrome, TextEncoder, TextDecoder, Response, DecompressionStream, AbortController, setTimeout, clearTimeout, URL, Date: class extends Date { static now() { return now; } }, crypto: require('node:crypto').webcrypto,
     fetch: async url => new Response(fs.readFileSync(path.join(root, url.replace('chrome-extension://test/', '')))) });
   context.importScripts = (...files) => files.forEach(file => vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), context, { filename: file }));

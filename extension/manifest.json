@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WordLens 划词词典",
-  "version": "1.3.9",
+  "version": "1.3.10",
   "description": "选中英文单词、短语或句子，查看音标、释义与中文翻译。单词和已收录短语离线查询，整句可联网翻译。",
   "minimum_chrome_version": "114",
   "permissions": ["storage", "tts", "contextMenus", "nativeMessaging"],

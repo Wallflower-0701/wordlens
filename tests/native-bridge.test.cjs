@@ -167,6 +167,26 @@ test('The old mouse-hook helper is rejected so the new click gate cannot silentl
   assert.equal(h.bridge.status().status, 'missing'); assert.equal(p.disconnected, true);
   assert.match(h.bridge.status().message, /1\.3\.9/);
 });
+
+test('Web ownership disables native capture at the host and rejects all late selection paths until released', async t => {
+  const h=harness(); t.after(()=>h.bridge.stop()); const p=h.connect();
+  h.bridge.setWebOwned(true);
+  assert.deepEqual(p.sent.at(-1),{type:'configure',mode:'context',trigger:'selection'});
+  for(const message of [{type:'selection',requestId:id('a'),text:'Basic'},
+    {type:'capture-empty',requestId:id('b')},{type:'speak',requestId:id('a')}])p.onMessage.emit(message);
+  await tick();assert.equal(h.queries.length,0);assert.equal(h.spoken.length,0);assert.equal(h.bridge.capture(),false);
+  h.bridge.configure({nativeEnabled:true,lookupMode:'copy'});
+  assert.equal(p.sent.at(-1).mode,'context');
+  h.bridge.setWebOwned(false);assert.equal(p.sent.at(-1).mode,'copy');
+  p.onMessage.emit({type:'selection',requestId:id('c'),text:'Basic'});await tick();
+  assert.deepEqual(h.queries,['Basic']);assert.equal(p.sent.at(-1).type,'result');
+});
+
+test('Native reconnect keeps an active web selection suppressed from the first configuration', t => {
+  const h=harness();t.after(()=>h.bridge.stop());h.bridge.setWebOwned(true);const p=h.connect();
+  assert.equal(p.sent[0].mode,'context');assert.equal(h.bridge.status().status,'ready');
+  h.bridge.setWebOwned(false);assert.equal(p.sent.at(-1).mode,'auto');
+});
 test('A broken native port stops reporting connected even before its disconnect callback arrives', t => {
   const h = harness(); t.after(() => h.bridge.stop()); const p = h.connect();
   p.disconnected = true;

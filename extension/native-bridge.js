@@ -13,8 +13,9 @@
   }
   function createBridge({ api, core, lookup, speak, recent = async () => false, timeout = 6000, retryDelay = 500 }) {
     let port = null, settings = core.sanitizeSettings(), state = 'disabled', message = '原页面增强已关闭。';
-    let generation = 0, active = null, handshake, recovery, recoveries = 0;
-    function status() { return { status: state, message }; }
+    let generation = 0, active = null, handshake, recovery, recoveries = 0, webOwned = false;
+    function configuration() { return { type: 'configure', mode: webOwned ? 'context' : settings.lookupMode, trigger: settings.trigger }; }
+    function status() { return { status: state, message: state === 'ready' && webOwned ? '原页面增强已连接 · 当前选区由网页浮窗处理' : message }; }
     function post(value) {
       if (!port) return false;
       try { port.postMessage(value); return true; }
@@ -42,9 +43,9 @@
         if (value.version !== '1.3.9') { stop(); state = 'missing'; message = '本地辅助版本不匹配，请安装 / 更新 1.3.9 组件。'; return; }
         clearTimeout(handshake); state = 'ready'; message = settings.lookupMode === 'copy' ? 'PDF 兼容取词已连接 · 选中英文后按 Ctrl+C' : '原页面增强已连接 · 只读取当前选区';
         if (value.automatic === false && settings.lookupMode === 'auto') message = '本地辅助已连接，但鼠标取词不可用；可切换快捷键模式。';
-        post({ type: 'configure', mode: settings.lookupMode, trigger: settings.trigger }); return;
+        post(configuration()); return;
       }
-      if (state !== 'ready' || !settings.enabled || !settings.nativeEnabled || settings.lookupMode === 'context') return;
+      if (state !== 'ready' || !settings.enabled || !settings.nativeEnabled || settings.lookupMode === 'context' || webOwned) return;
       if (value.type === 'configured' && settings.lookupMode === 'copy' && value.copyAvailable === false) {
         stop(); state='missing'; message='复制取词监听未能启动，请点击重新连接。'; return;
       }
@@ -110,7 +111,7 @@
       if (force) { stop(); recoveries = 0; }
       if (port) {
         if (state === 'ready') message = settings.lookupMode === 'copy' ? 'PDF 兼容取词已连接 · 选中英文后按 Ctrl+C' : '原页面增强已连接 · 只读取当前选区';
-        post({ type: 'configure', mode: settings.lookupMode, trigger: settings.trigger }); return status();
+        post(configuration()); return status();
       }
       state = 'connecting'; message = '正在连接本地辅助组件…';
       try {
@@ -129,9 +130,16 @@
       }
       return status();
     }
-    function capture() { return state === 'ready' && post({ type: 'capture' }); }
+    function capture() { return state === 'ready' && !webOwned && post({ type: 'capture' }); }
+    function setWebOwned(value) {
+      if (webOwned === value) return;
+      webOwned = value; generation++; active = null;
+      // Context mode clears pending native work and disables automatic mouse
+      // and copy capture at the host, before it can create another card.
+      if (state === 'ready') post(configuration());
+    }
     function dismiss() { generation++; active = null; if (state === 'ready') post({ type: 'dismiss' }); }
-    return { configure, status, capture, dismiss, stop };
+    return { configure, status, capture, dismiss, stop, setWebOwned };
   }
   const api = { HOST, createBridge };
   if (typeof module === 'object' && module.exports) module.exports = api;

@@ -283,6 +283,8 @@
   window.addEventListener('scroll', event => { if (open && !inside(event)) hide(); }, true);
   window.addEventListener('resize', hide);
   window.addEventListener('pagehide', hide);
+  window.addEventListener('blur', hide);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) hide(); });
   window.visualViewport?.addEventListener('resize', hide);
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.settings) { settings = sanitizeSettings(changes.settings.newValue); hide(); }
