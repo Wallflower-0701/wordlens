@@ -18,7 +18,7 @@ function harness(options = {}) {
     lookup: async text => { queries.push(text); return options.lookup ? options.lookup(text) : { status: 'ok', word: text, phonetic: "'test", definitions: ['测试'], kind: 'word' }; },
     speak: async text => { spoken.push(text); return { status: 'ok' }; },
     recent: options.recent, timeout: options.timeout ?? 1000, retryDelay: options.retryDelay ?? 500 });
-  return { bridge, api, ports, queries, spoken, connect() { bridge.configure({ nativeEnabled: true, lookupMode: 'auto' }); const p = ports.at(-1); p.onMessage.emit({ type: 'ready', version: '1.3.4', automatic: true }); return p; } };
+  return { bridge, api, ports, queries, spoken, connect() { bridge.configure({ nativeEnabled: true, lookupMode: 'auto' }); const p = ports.at(-1); p.onMessage.emit({ type: 'ready', version: '1.3.9', automatic: true }); return p; } };
 }
 test('Modes are sanitized, default to ordinary auto lookup and require opt-in for the native helper', () => {
   assert.equal(core.sanitizeSettings().lookupMode, 'auto'); assert.equal(core.sanitizeSettings().nativeEnabled, false);
@@ -99,7 +99,7 @@ test('Context mode disconnects native monitoring; reconnect does not revive an o
   const h = harness(); t.after(() => h.bridge.stop()); const old = h.connect();
   h.bridge.configure({ nativeEnabled: true, lookupMode: 'context' }); assert.equal(old.disconnected, true);
   assert.equal(h.bridge.status().status, 'disabled'); assert.equal(h.bridge.capture(), false);
-  const next = h.connect(); old.onMessage.emit({ type: 'ready', version: '1.3.4' });
+  const next = h.connect(); old.onMessage.emit({ type: 'ready', version: '1.3.9' });
   next.onMessage.emit({ type: 'selection', requestId: id('1'), text: 'Basic' }); await tick();
   assert.equal(old.sent.filter(x => x.type === 'result').length, 0); assert.equal(next.sent.at(-1).type, 'result');
 });
@@ -159,6 +159,14 @@ test('A missing, incompatible or unresponsive host is not reported connected', a
   h.bridge.configure({ nativeEnabled: true }, true); await new Promise(resolve => setTimeout(resolve, 35));
   assert.equal(h.bridge.status().status, 'missing'); assert.equal(h.ports[2].disconnected, true);
 });
+
+test('The old mouse-hook helper is rejected so the new click gate cannot silently remain inactive', t => {
+  const h = harness(); t.after(() => h.bridge.stop());
+  h.bridge.configure({ nativeEnabled: true }); const p = h.ports[0];
+  p.onMessage.emit({ type: 'ready', version: '1.3.4' });
+  assert.equal(h.bridge.status().status, 'missing'); assert.equal(p.disconnected, true);
+  assert.match(h.bridge.status().message, /1\.3\.9/);
+});
 test('A broken native port stops reporting connected even before its disconnect callback arrives', t => {
   const h = harness(); t.after(() => h.bridge.stop()); const p = h.connect();
   p.disconnected = true;
@@ -212,7 +220,7 @@ test('A stuck provider restarts with a new port and discards the previous lookup
   assert.equal(old.disconnected,true); assert.equal(h.bridge.status().status,'connecting');
   await new Promise(resolve=>setTimeout(resolve,10));
   assert.equal(h.ports.length,2); const next=h.ports[1];
-  next.onMessage.emit({type:'ready',version:'1.3.4'});
+  next.onMessage.emit({type:'ready',version:'1.3.9'});
   release({status:'ok',word:'Basic',definitions:['旧结果']}); await tick();
   assert.equal(h.bridge.status().status,'ready'); assert.equal(old.sent.filter(x=>x.type==='result').length,0);
   assert.equal(next.sent.filter(x=>x.type==='result').length,0);
@@ -223,10 +231,10 @@ test('Provider restart is bounded and switching off cancels a scheduled restart'
   for (let i=0;i<3;i++) {
     h.ports.at(-1).onMessage.emit({type:'capture-status',state:'no-selection',reason:'provider-timeout'});
     await new Promise(resolve=>setTimeout(resolve,10));
-    if (i<2) h.ports.at(-1).onMessage.emit({type:'ready',version:'1.3.4'});
+    if (i<2) h.ports.at(-1).onMessage.emit({type:'ready',version:'1.3.9'});
   }
   assert.equal(h.ports.length,3); assert.equal(h.bridge.status().status,'missing');
-  h.bridge.configure({nativeEnabled:true},true); h.ports.at(-1).onMessage.emit({type:'ready',version:'1.3.4'});
+  h.bridge.configure({nativeEnabled:true},true); h.ports.at(-1).onMessage.emit({type:'ready',version:'1.3.9'});
   h.ports.at(-1).onMessage.emit({type:'capture-status',state:'no-selection',reason:'provider-timeout'});
   h.bridge.configure({nativeEnabled:false}); await new Promise(resolve=>setTimeout(resolve,10));
   assert.equal(h.ports.length,4); assert.equal(h.bridge.status().status,'disabled');
@@ -241,7 +249,7 @@ test('A selection mismatch has a specific message and never performs a lookup', 
 test('Copy mode reports its trigger and refuses to claim ready when the copy listener failed', t => {
   const h=harness(); t.after(()=>h.bridge.stop());
   h.bridge.configure({nativeEnabled:true,lookupMode:'copy'}); const p=h.ports[0];
-  p.onMessage.emit({type:'ready',version:'1.3.4'});
+  p.onMessage.emit({type:'ready',version:'1.3.9'});
   assert.match(h.bridge.status().message,/Ctrl\+C/); assert.equal(p.sent[0].mode,'copy');
   p.onMessage.emit({type:'configured',copyAvailable:false});
   assert.equal(h.bridge.status().status,'missing'); assert.equal(p.disconnected,true);
@@ -253,7 +261,7 @@ test('Packaged Windows helper passes its framing, origin, selected-range search 
   const result = require('node:child_process').spawnSync(exe, ['--self-test'], { windowsHide: true, timeout: 10000 });
   assert.equal(result.status, 0, result.stderr?.toString()); const length = result.stdout.readUInt32LE();
   assert.equal(length, result.stdout.length - 4); const message = JSON.parse(result.stdout.subarray(4).toString());
-  assert.equal(message.type, 'self-test'); assert.ok(message.passed >= 24); assert.equal(message.error, undefined);
+  assert.equal(message.type, 'self-test'); assert.ok(message.passed >= 29); assert.equal(message.error, undefined);
   assert.ok(message.selectionChecks.includes('nested-pdf-text-provider'));
   assert.ok(message.selectionChecks.includes('editable-ancestor-never-read'));
   assert.ok(message.selectionChecks.includes('content-free-health-snapshot'));
@@ -265,4 +273,9 @@ test('Packaged Windows helper passes its framing, origin, selected-range search 
   assert.ok(message.copyChecks.includes('copy-requires-user-gesture-and-new-sequence'));
   assert.ok(message.copyChecks.includes('copy-requires-same-foreground-process'));
   assert.ok(message.copyChecks.includes('copy-is-once-bounded-and-cancellable'));
+  assert.ok(message.selectionChecks.includes('wordlens-card-never-falls-back-to-document'));
+  assert.ok(message.gestureChecks.includes('single-speech-and-close-clicks-never-capture'));
+  assert.ok(message.gestureChecks.includes('drag-and-fresh-double-click-remain-available'));
+  assert.ok(message.gestureChecks.includes('card-window-switch-and-scroll-cancel-gestures'));
+  assert.ok(message.gestureChecks.includes('double-click-timestamp-rollover'));
 });

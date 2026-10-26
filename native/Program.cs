@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 
 [assembly: AssemblyTitle("WordLens 原页面划词辅助")]
-[assembly: AssemblyVersion("1.3.4.0")]
+[assembly: AssemblyVersion("1.3.9.0")]
 
 namespace WordLens.Native {
   static class Program {
@@ -19,7 +19,7 @@ namespace WordLens.Native {
       if (args.Length == 1 && args[0] == "--self-test") return SelfTests.Run();
       if (args.Length == 2 && args[0] == "--render-preview") return PopupPreview.Run(args[1]);
       if (args.Length == 2 && args[0] == "--install-user") {
-        try { Installer.Install(args[1]); Protocol.Write(Console.OpenStandardOutput(), new { type = "installed", version = "1.3.4", scope = "current-user" }); return 0; }
+        try { Installer.Install(args[1]); Protocol.Write(Console.OpenStandardOutput(), new { type = "installed", version = "1.3.9", scope = "current-user" }); return 0; }
         catch (Exception error) { Protocol.Write(Console.OpenStandardOutput(), new { type = "install-error", message = error.Message }); return 1; }
       }
       if (args.Length > 0 && (args[0] == "--test-host" || Installer.AllowedOrigin(args[0]))) {
@@ -51,6 +51,9 @@ namespace WordLens.Native {
     IntPtr keyboardHook;
     MouseHook keyboardCallback;
     readonly CopyGate copyGate = new CopyGate();
+    readonly SelectionGesture gesture = new SelectionGesture(SystemInformation.DragSize.Width / 2,
+      SystemInformation.DragSize.Height / 2, SystemInformation.DoubleClickSize.Width / 2,
+      SystemInformation.DoubleClickSize.Height / 2, (uint)SystemInformation.DoubleClickTime);
     bool copyPending, copyListening;
     uint copySequence;
     DateTime copyDeadline;
@@ -72,7 +75,7 @@ namespace WordLens.Native {
         hookCallback = MouseInput; keyboardCallback = KeyboardInput;
         RefreshHook();
         new Thread(ReadLoop) { IsBackground = true, Name = "WordLens native input" }.Start();
-        Send(new { type = "ready", version = "1.3.4", selectedTextOnly = true, clipboard = "copy-mode-only", automatic = mouseHook != IntPtr.Zero });
+        Send(new { type = "ready", version = "1.3.9", selectedTextOnly = true, clipboard = "copy-mode-only", automatic = mouseHook != IntPtr.Zero });
         Report("ready", mouseHook == IntPtr.Zero ? "hook-unavailable" : "", null);
       }));
       FormClosed += delegate { alive = false; timer.Stop(); if (mouseHook != IntPtr.Zero) UnhookWindowsHookEx(mouseHook); if (keyboardHook!=IntPtr.Zero) UnhookWindowsHookEx(keyboardHook); if (copyListening) CopySelection.RemoveClipboardFormatListener(Handle); popup.Dispose(); if (!diagnostic) NativeStatus.Write(NativeStatus.Snapshot("disconnected", "", mode, 0, 0, 0)); };
@@ -115,13 +118,17 @@ namespace WordLens.Native {
       if (code >= 0 && (kind == 0x201 || kind == 0x202 || kind == 0x20a)) {
         // Copy hook data before returning: the OS owns the pointer, and the cursor
         // may already be over Edge's floating selection toolbar when we read UIA.
-        var point = ((MouseData)Marshal.PtrToStructure(data, typeof(MouseData))).Point;
+        var mouse = (MouseData)Marshal.PtrToStructure(data, typeof(MouseData));
+        var point = mouse.Point;
         var window = SelectionCapture.GetForegroundWindow();
         bool insidePopup = !popup.IsDisposed && popup.Visible && popup.Bounds.Contains(point.X, point.Y);
+        if (kind == 0x201) gesture.Press(window, point, insidePopup);
+        if (kind == 0x20a) gesture.Reset();
+        bool selected = kind == 0x202 && gesture.Release(window, point, mouse.Time, insidePopup);
         try { BeginInvoke((Action)(() => {
           if (insidePopup) return;
           if (kind == 0x201 || kind == 0x20a) ClearSelection(true);
-          if (kind == 0x202 && mode == "auto") Schedule(false, window, point);
+          if (selected && mode == "auto") Schedule(false, window, point);
         })); } catch { }
       }
       return CallNextHookEx(mouseHook, code, message, data);
@@ -146,6 +153,7 @@ namespace WordLens.Native {
       if (!alive || popup.IsDisposed) return;
       string type = StringValue(message, "type");
       if (type == "configure") {
+        gesture.Reset();
         string next = StringValue(message, "mode"); mode = next == "auto" || next == "shortcut" || next=="copy" ? next : "context";
         trigger = StringValue(message, "trigger") == "alt" ? "alt" : "selection";
         ClearSelection(false);

@@ -15,7 +15,7 @@ test('A live HTML card owns lookup across missing broadcast replies, focus chang
     const h = await background({ nativeEnabled: true });
     t.after(() => h.chrome.storage.onChanged.emit({ settings: { newValue: {} } }, 'local'));
     h.chrome.tabs.sendMessage = reply;
-    const p = h.ports[0]; await p.onMessage.emit({ type: 'ready', version: '1.3.4' });
+    const p = h.ports[0]; await p.onMessage.emit({ type: 'ready', version: '1.3.9' });
     const owner = cardOwner(h, 7, 12); await tick();
     h.advance(60000);
     await h.dispatch({ type: 'speak', word: 'Basic' }, { id: 'test', tab: { id: 7 } });
@@ -34,7 +34,7 @@ test('A live HTML card owns lookup across missing broadcast replies, focus chang
 test('Opening a web card dismisses an already rendered native card and blocks its speech button', async t => {
   const h = await background({ nativeEnabled: true });
   t.after(() => h.chrome.storage.onChanged.emit({ settings: { newValue: {} } }, 'local'));
-  const p = h.ports[0]; await p.onMessage.emit({ type: 'ready', version: '1.3.4' });
+  const p = h.ports[0]; await p.onMessage.emit({ type: 'ready', version: '1.3.9' });
   await p.onMessage.emit({ type: 'selection', requestId: 'a'.repeat(32), text: 'Basic' });
   for (let i = 0; i < 30 && !p.sent.some(x => x.type === 'result'); i++) await new Promise(r => setTimeout(r, 10));
   assert.equal(p.sent.at(-1).type, 'result');
@@ -46,7 +46,7 @@ test('Opening a web card dismisses an already rendered native card and blocks it
 test('Only trusted active-tab card ports suppress native lookup; closing one frame preserves other owners', async t => {
   const h = await background({ nativeEnabled: true });
   t.after(() => h.chrome.storage.onChanged.emit({ settings: { newValue: {} } }, 'local'));
-  const p = h.ports[0]; await p.onMessage.emit({ type: 'ready', version: '1.3.4' });
+  const p = h.ports[0]; await p.onMessage.emit({ type: 'ready', version: '1.3.9' });
   cardOwner(h, 8); cardOwner(h, 7, 0, 'other-extension'); await tick();
   assert.equal(p.sent.filter(x => x.type === 'dismiss').length, 0);
   await p.onMessage.emit({ type: 'capture-empty', requestId: 'a'.repeat(32) }); await tick();
@@ -63,7 +63,7 @@ test('Only trusted active-tab card ports suppress native lookup; closing one fra
 test('Closing a card before its active-tab check resolves cannot dismiss a later native card', async t => {
   const h = await background({ nativeEnabled: true });
   t.after(() => h.chrome.storage.onChanged.emit({ settings: { newValue: {} } }, 'local'));
-  const p = h.ports[0]; await p.onMessage.emit({ type: 'ready', version: '1.3.4' });
+  const p = h.ports[0]; await p.onMessage.emit({ type: 'ready', version: '1.3.9' });
   let release; h.chrome.tabs.query = () => new Promise(resolve => { release = resolve; });
   const owner = cardOwner(h); owner.disconnect(); release([{ id: 7 }]); await tick();
   assert.equal(p.sent.filter(x => x.type === 'dismiss').length, 0);
@@ -79,7 +79,7 @@ test('Alt+W on a protected original page requests native selection and never ope
   const h = await background({ nativeEnabled: true, lookupMode: 'shortcut' });
   t.after(() => h.chrome.storage.onChanged.emit({ settings: { newValue: {} } }, 'local'));
   assert.equal(h.ports.length, 1); const p = h.ports[0];
-  await p.onMessage.emit({ type: 'ready', version: '1.3.4', automatic: true }); await tick();
+  await p.onMessage.emit({ type: 'ready', version: '1.3.9', automatic: true }); await tick();
   await h.chrome.commands.onCommand.emit('lookup-selection');
   assert.equal(p.sent.at(-1).type, 'capture'); assert.equal(h.windows.length, 0);
 });
@@ -93,7 +93,7 @@ test('Copy mode configures the native helper and uses the exact copied word in t
   const h=await background({nativeEnabled:true,lookupMode:'copy'});
   t.after(()=>h.chrome.storage.onChanged.emit({settings:{newValue:{}}},'local'));
   const p=h.ports[0];
-  await p.onMessage.emit({type:'ready',version:'1.3.4'}); await tick();
+  await p.onMessage.emit({type:'ready',version:'1.3.9'}); await tick();
   assert.equal(p.sent[0].mode,'copy');
   await p.onMessage.emit({type:'selection',requestId:'a'.repeat(32),text:'Basic'});
   for (let i=0;i<20 && !p.sent.some(x=>x.type==='result');i++) await new Promise(resolve=>setTimeout(resolve,10));
@@ -104,7 +104,7 @@ test('Copy mode configures the native helper and uses the exact copied word in t
 test('A native PDF selection containing a Unicode ligature reaches the real dictionary as the same word',async t=>{
   const h=await background({nativeEnabled:true,lookupMode:'auto'});
   t.after(()=>h.chrome.storage.onChanged.emit({settings:{newValue:{}}},'local'));
-  const p=h.ports[0];await p.onMessage.emit({type:'ready',version:'1.3.4'});await tick();
+  const p=h.ports[0];await p.onMessage.emit({type:'ready',version:'1.3.9'});await tick();
   await p.onMessage.emit({type:'selection',requestId:'b'.repeat(32),text:'ﬁnd'});
   for(let i=0;i<20 && !p.sent.some(x=>x.type==='result');i++)await new Promise(resolve=>setTimeout(resolve,10));
   const result=p.sent.find(x=>x.type==='result');
@@ -115,7 +115,7 @@ test('The precise PDF reader suppresses unrelated native cards while it owns sel
   const h=await background({nativeEnabled:true,lookupMode:'auto'});
   t.after(()=>h.chrome.storage.onChanged.emit({settings:{newValue:{}}},'local'));
   h.chrome.tabs.query=async()=>[{id:7,url:'chrome-extension://test/reader.html'}];
-  const p=h.ports[0];await p.onMessage.emit({type:'ready',version:'1.3.4'});await tick();
+  const p=h.ports[0];await p.onMessage.emit({type:'ready',version:'1.3.9'});await tick();
   await p.onMessage.emit({type:'selection',requestId:'c'.repeat(32),text:'unrelated'});await tick();
   assert.equal(p.sent.at(-1).type,'dismiss');assert.equal(p.sent.filter(x=>x.type==='result').length,0);
 });
@@ -123,7 +123,7 @@ test('The precise PDF reader suppresses unrelated native cards while it owns sel
 test('Opt-in native word speech flows through the real dictionary and local voice API exactly once',async t=>{
   const h=await background({nativeEnabled:true,autoSpeak:true});
   t.after(()=>h.chrome.storage.onChanged.emit({settings:{newValue:{}}},'local'));
-  const p=h.ports[0];await p.onMessage.emit({type:'ready',version:'1.3.4'});await tick();
+  const p=h.ports[0];await p.onMessage.emit({type:'ready',version:'1.3.9'});await tick();
   await p.onMessage.emit({type:'selection',requestId:'a'.repeat(32),text:'Basic'});
   for(let i=0;i<20 && !h.spoken.length;i++)await new Promise(resolve=>setTimeout(resolve,10));
   assert.deepEqual(h.spoken,['Basic']);assert.equal(p.sent.filter(x=>x.type==='result').length,1);
@@ -141,7 +141,7 @@ test('An HTML speaker click long after lookup keeps the web card and dismisses d
       assert.equal(tab,7);assert.equal(message.type,'page-card-state');
       return visible?{visible:true}:undefined;
     };
-    const p=h.ports[0];await p.onMessage.emit({type:'ready',version:'1.3.4'});await tick();
+    const p=h.ports[0];await p.onMessage.emit({type:'ready',version:'1.3.9'});await tick();
     const entry=await h.dispatch({type:'lookup',word:'Basic'},sender);
     assert.equal(entry.status,'ok');h.advance(60000);
     const speech=await h.dispatch({type:'speak',word:'Basic'},sender);

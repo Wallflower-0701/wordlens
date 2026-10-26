@@ -86,7 +86,8 @@ namespace WordLens.Native {
         string[] selectionChecks = SelectionTests.Run();
         string[] popupChecks = PopupTests.Run();
         string[] copyChecks = CopySelection.Tests();
-        Protocol.Write(Console.OpenStandardOutput(), new { type = "self-test", passed = passed + selectionChecks.Length + popupChecks.Length + copyChecks.Length, selectionChecks = selectionChecks, popupChecks = popupChecks, copyChecks=copyChecks }); return 0;
+        string[] gestureChecks = SelectionGesture.Tests();
+        Protocol.Write(Console.OpenStandardOutput(), new { type = "self-test", passed = passed + selectionChecks.Length + popupChecks.Length + copyChecks.Length + gestureChecks.Length, selectionChecks = selectionChecks, popupChecks = popupChecks, copyChecks=copyChecks, gestureChecks=gestureChecks }); return 0;
       } catch (Exception error) { Protocol.Write(Console.OpenStandardOutput(), new { type = "self-test", error = error.Message }); return 1; }
     }
   }

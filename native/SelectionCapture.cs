@@ -35,6 +35,7 @@ namespace WordLens.Native {
   abstract class SelectionNode {
     public abstract string Id { get; }
     public abstract bool Blocked { get; }
+    public virtual bool LookupCard { get { return false; } }
     public abstract bool Document { get; }
     public abstract bool Container { get; }
     public abstract bool AtPoint(SelectionCapture.NativePoint point);
@@ -54,6 +55,8 @@ namespace WordLens.Native {
         var path = new List<SelectionNode>(); bool safe = true;
         try {
           for (var node = start; node != null && path.Count < 24; node = node.Parent) {
+            // Never fall back to the focused document behind our card.
+            if (node.LookupCard) { result.Reason="lookup-card"; return result; }
             if (node.Blocked) { blocked = true; safe = false; break; }
             path.Add(node);
           }
@@ -129,6 +132,7 @@ namespace WordLens.Native {
         catch { id = "unavailable-" + value.GetHashCode().ToString(); }
       }
       public override string Id { get { return id; } }
+      public override bool LookupCard { get { return element.Current.Name == "WordLens 释义与翻译"; } }
       public override bool Blocked {
         get {
           var current = element.Current;

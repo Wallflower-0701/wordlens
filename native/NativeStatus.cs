@@ -7,7 +7,7 @@ namespace WordLens.Native {
   static class NativeStatus {
     // A single overwritten health snapshot, never selection/document/URL/window data.
     public static object Snapshot(string state, string reason, string mode, int attempt, int nodes, int providers) {
-      return new { type = "capture-status", version = "1.3.4", state = state, reason = reason, mode = mode,
+      return new { type = "capture-status", version = "1.3.9", state = state, reason = reason, mode = mode,
         attempt = attempt, nodes = nodes, providers = providers, updatedUtc = DateTime.UtcNow.ToString("o") };
     }
     public static void Write(object snapshot) {

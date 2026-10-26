@@ -10,6 +10,8 @@ namespace WordLens.Native {
       public readonly List<SelectionNode> Items = new List<SelectionNode>();
       public bool IsDocument, IsContainer, Edit, ReadOnly, Provider, Broken, Outside;
       public bool Password = false;
+      public bool Card = false;
+      public override bool LookupCard { get { return Card; } }
       public string Text;
       public Rect[] Bounds = new[] { new Rect(110,230,60,20) };
       public bool? ContainsCaret = true;
@@ -66,6 +68,14 @@ namespace WordLens.Native {
       result = SelectionSearch.Find(sensitiveChild, sensitive, Anchor);
       Check(result.Selection == null && sensitive.Reads == 0 && sensitiveChild.Reads == 0 && result.Reason == "protected", "Editable ancestor protection");
       passed.Add("editable-ancestor-never-read");
+
+      var card = new Node { Card=true };
+      var speakButton=card.Add(new Node());
+      var behindCard=new Node { IsDocument=true, Provider=true, Text="Basic" };
+      result=SelectionSearch.Find(speakButton,behindCard,Anchor);
+      Check(result.Selection==null && result.Reason=="lookup-card" && behindCard.Reads==0 && speakButton.Reads==0,
+        "WordLens button fell back to underlying selection");
+      passed.Add("wordlens-card-never-falls-back-to-document");
 
       var wrapper = new Node { IsDocument = true };
       wrapper.Add(new Node { Broken = true });
