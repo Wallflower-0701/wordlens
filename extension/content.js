@@ -92,18 +92,22 @@
     phoneticLabel = shadow.querySelector('.phonetic');
     note = shadow.querySelector('.note');
     speaker = shadow.querySelector('.speak');
-    shadow.querySelector('.close').addEventListener('click', hide);
+    shadow.querySelector('.close').addEventListener('click', () => hide(true));
     speaker.addEventListener('click', play);
     // Keep the source selection while using the card with a pointer.
     shadow.addEventListener('mousedown', event => { if (event.button === 0) event.preventDefault(); });
   }
 
   function inside(event) { return host && event.composedPath().includes(host); }
-  function hide() {
+  function hide(keepSelectionOwner = false) {
+    clearTimeout(timer);
     sequence++;
     speechSequence++;
     open = false;
-    releaseCard();
+    // The native mouse hook processes this same click after the DOM click.
+    // Closing the card cancels this selection session, not its duplicate guard.
+    // A fresh gesture outside the card, navigation or settings releases it.
+    if (keepSelectionOwner !== true) releaseCard();
     activeWord = '';
     selectedQuery = '';
     if (!host) return;
@@ -247,7 +251,8 @@
   }
 
   document.addEventListener('pointerdown', event => {
-    if (!event.isTrusted || inside(event)) return;
+    if (!event.isTrusted) return;
+    if (inside(event)) { clearTimeout(timer); return; }
     pointerSelecting = true;
     clearTimeout(timer);
     hide();
@@ -261,7 +266,8 @@
   document.addEventListener('pointercancel', () => { pointerSelecting = false; hide(); }, true);
   document.addEventListener('keyup', event => {
     if (!event.isTrusted) return;
-    if (event.key === 'Escape') { clearTimeout(timer); hide(); return; }
+    if (event.key === 'Escape') { hide(true); return; }
+    if (inside(event)) return;
     if (event.shiftKey && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
       scheduleInspect(event, 50);
     }

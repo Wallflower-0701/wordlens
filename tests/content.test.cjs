@@ -19,7 +19,7 @@ function element() {
     attachShadow() { return this.shadowRoot = element(); }
   };
 }
-async function page() {
+async function page(worker) {
   const ports = [], requests = [], nodes = [];
   let runtimeListener, storageListener;
   const selection = { isCollapsed: false, rangeCount: 1, toString: () => 'Basic', getRangeAt: () => element() };
@@ -29,13 +29,16 @@ async function page() {
   const chrome = { runtime: { id: 'test', getURL: name => 'chrome-extension://test/' + name,
     onMessage: { addListener(fn) { runtimeListener = fn; } },
     connect({ name }) {
-      let listener;
-      const port = { name, disconnected: false, onDisconnect: { addListener(fn) { listener = fn; } },
-        disconnect() { this.disconnected = true; listener?.(); } };
+      const listeners = [];
+      const port = { name, sender: { id: 'test', tab: { id: 7 }, frameId: 0 }, disconnected: false,
+        onDisconnect: { addListener(fn) { listeners.push(fn); } },
+        disconnect() { this.disconnected = true; listeners.forEach(fn => fn()); } };
+      worker?.chrome.runtime.onConnect.emit(port);
       ports.push(port); return port;
     },
     async sendMessage(message) {
       requests.push(message);
+      if (worker) return worker.dispatch(message, { id: 'test', tab: { id: 7 } });
       return message.type === 'speak' ? { status: 'ok' } : { status: 'ok', kind: 'word', word: 'basic', definitions: ['基本'] };
     } }, storage: { local: { async get() { return { settings: {} }; } }, onChanged: { addListener(fn) { storageListener = fn; } } } };
   const context = vm.createContext({ document, window, chrome, WordLensCore: core, location: { href: 'file:///C:/lesson.html' }, setTimeout, clearTimeout });
@@ -46,7 +49,7 @@ async function page() {
     card: () => nodes.find(node => node.id === 'wordlens-card-host') };
 }
 
-test('The actual HTML card retains one ownership port through repeated speech clicks and releases it on close', async () => {
+test('The actual HTML card retains selection ownership through speech and close until a new page gesture', async () => {
   const h = await page(); await h.lookup();
   assert.equal(h.ports.length, 1); assert.equal(h.ports[0].name, 'wordlens-page-card');
   const card = h.card();
@@ -56,8 +59,45 @@ test('The actual HTML card retains one ownership port through repeated speech cl
   assert.equal(h.requests.filter(x => x.type === 'lookup').length, 1);
   assert.equal(h.requests.filter(x => x.type === 'speak').length, 2); assert.equal(card.hidden, false);
   await card.shadowRoot.querySelector('.close').emit('click');
-  assert.equal(card.hidden, true); assert.equal(h.ports[0].disconnected, true);
+  assert.equal(card.hidden, true); assert.equal(h.ports[0].disconnected, false);
+  await h.document.emit('pointerdown', { isTrusted: true, composedPath: () => [] });
+  assert.equal(h.ports[0].disconnected, true);
   await h.lookup(); assert.equal(h.ports.length, 2); assert.equal(card.hidden, false);
+});
+
+test('Real content and worker suppress native mouse-up capture after both speech and closing the HTML card', async t => {
+  const { background, tick } = require('./background-harness.cjs');
+  const worker = await background({ nativeEnabled: true });
+  t.after(() => worker.chrome.storage.onChanged.emit({ settings: { newValue: {} } }, 'local'));
+  const native = worker.ports[0]; await native.onMessage.emit({ type: 'ready', version: '1.3.4' });
+  const h = await page(worker); await h.lookup(); worker.advance(60000);
+  await h.card().shadowRoot.querySelector('.speak').emit('click');
+  await native.onMessage.emit({ type: 'selection', requestId: 'a'.repeat(32), text: 'Basic' }); await tick();
+  assert.deepEqual(worker.spoken, ['Basic']); assert.equal(native.sent.at(-1).type, 'dismiss');
+  await h.card().shadowRoot.querySelector('.close').emit('click');
+  worker.advance(10000);
+  for (const message of [
+    { type: 'selection', requestId: 'b'.repeat(32), text: 'Basic' },
+    { type: 'capture-empty', requestId: 'c'.repeat(32) }
+  ]) { await native.onMessage.emit(message); await tick(); assert.equal(native.sent.at(-1).type, 'dismiss'); }
+  assert.equal(h.card().hidden, true); assert.equal(native.sent.filter(x => x.type === 'result').length, 0);
+  // Closing must not permanently disable the next intentionally selected word.
+  await h.document.emit('pointerdown', { isTrusted: true, composedPath: () => [] });
+  h.selection.toString = () => 'Sequence'; await h.lookup();
+  assert.equal(h.card().hidden, false); assert.equal(h.card().shadowRoot.querySelector('.word').textContent, 'Sequence');
+});
+
+test('Closing or pressing Escape cancels queued HTML inspection instead of reopening the card', async () => {
+  for (const close of [h => h.card().shadowRoot.querySelector('.close').emit('click'),
+    h => h.document.emit('keyup', { isTrusted: true, key: 'Escape' })]) {
+    const h = await page();
+    await h.document.emit('pointerup', { isTrusted: true, button: 0, composedPath: () => [] });
+    await h.lookup(); await close(h);
+    await new Promise(resolve => setTimeout(resolve, 70));
+    assert.equal(h.card().hidden, true); assert.equal(h.requests.filter(x => x.type === 'lookup').length, 1);
+    assert.equal(h.ports[0].disconnected, false);
+    await h.window.emit('pagehide'); assert.equal(h.ports[0].disconnected, true);
+  }
 });
 
 test('HTML ownership ends when the document leaves, settings change or the underlying selection disappears', async () => {
