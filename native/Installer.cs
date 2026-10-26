@@ -4,6 +4,7 @@ using System.Linq;
 using System.Drawing;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Web.Script.Serialization;
@@ -13,6 +14,20 @@ using Microsoft.Win32;
 namespace WordLens.Native {
   sealed class Installer : Form {
     public const string HostName = "com.wordlens.selection.v2";
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern uint GetFinalPathNameByHandle(IntPtr handle, StringBuilder path, uint length, uint flags);
+
+    static void VerifyInstallationPath(string executable) {
+      using (var file = File.OpenRead(executable)) {
+        var path = new StringBuilder(32768);
+        uint length = GetFinalPathNameByHandle(file.SafeFileHandle.DangerousGetHandle(), path, (uint)path.Capacity, 0);
+        if (length == 0 || length >= path.Capacity) throw new IOException("无法确认安装位置，未写入浏览器登记。");
+        string actual = path.ToString();
+        if (actual.StartsWith(@"\\?\", StringComparison.Ordinal)) actual = actual.Substring(4);
+        if (!String.Equals(Path.GetFullPath(executable), actual, StringComparison.OrdinalIgnoreCase))
+          throw new IOException("Windows 将辅助程序重定向到了应用专属目录，浏览器无法使用这份安装。请直接在文件资源管理器中双击安装程序或修复连接文件；不要从打包应用的终端启动安装。浏览器登记未更改。");
+      }
+    }
     readonly TextBox extensionId;
     readonly Label status;
     public Installer(string id) {
@@ -46,6 +61,7 @@ namespace WordLens.Native {
       string executable = Path.Combine(DirectoryPath, "WordLens.Native-v2.exe");
       string running = Assembly.GetExecutingAssembly().Location;
       if (!String.Equals(Path.GetFullPath(running), Path.GetFullPath(executable), StringComparison.OrdinalIgnoreCase)) File.Copy(running, executable, true);
+      VerifyInstallationPath(executable);
       string manifest = Path.Combine(DirectoryPath, HostName + ".json");
       var origins = new HashSet<string>(StringComparer.Ordinal) { "chrome-extension://" + id + "/" };
       if (File.Exists(manifest)) {
