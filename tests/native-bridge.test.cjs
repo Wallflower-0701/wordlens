@@ -45,6 +45,26 @@ test('A page that already displayed the same selection does not also show a nati
   p.onMessage.emit({ type: 'selection', requestId: id('c'), text: 'Basic' }); await tick();
   assert.equal(h.queries.length, 0); assert.equal(p.sent.at(-1).type, 'dismiss');
 });
+
+test('A web card appearing during native lookup wins, and its dismissed native request cannot speak', async t => {
+  let visible=false, release;
+  const h=harness({recent:async()=>visible,lookup:()=>new Promise(resolve=>{release=resolve;})});
+  t.after(()=>h.bridge.stop());const p=h.connect();
+  p.onMessage.emit({type:'selection',requestId:id('b'),text:'Basic'});await tick();
+  assert.equal(h.queries.length,1);visible=true;
+  release({status:'ok',word:'Basic',definitions:['基本']});await tick();
+  assert.equal(p.sent.at(-1).type,'dismiss');assert.equal(p.sent.filter(x=>x.type==='result').length,0);
+  p.onMessage.emit({type:'speak',requestId:id('b')});await tick();assert.equal(h.spoken.length,0);
+});
+
+test('Disabling native lookup during its final web-card check discards the pending result', async t => {
+  let calls=0, release;
+  const h=harness({recent:()=>++calls===1?Promise.resolve(false):new Promise(resolve=>{release=resolve;})});
+  t.after(()=>h.bridge.stop());const p=h.connect();
+  p.onMessage.emit({type:'selection',requestId:id('b'),text:'Basic'});await tick();
+  h.bridge.configure({nativeEnabled:false});release(false);await tick();
+  assert.equal(p.sent.filter(x=>x.type==='result').length,0);
+});
 test('Rapid reselection and disabling the helper discard stale lookup results', async t => {
   let release;
   const h = harness({ lookup: text => text === 'first' ? new Promise(resolve => { release = resolve; }) : Promise.resolve({ status: 'ok', word: text, definitions: ['第二条'] }) });

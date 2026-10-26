@@ -1,27 +1,6 @@
 'use strict';
 const test = require('node:test'), assert = require('node:assert/strict');
-const vm = require('node:vm'), fs = require('node:fs'), path = require('node:path');
-const root = path.resolve(__dirname, '../extension');
-const tick = () => new Promise(resolve => setImmediate(resolve));
-function event() { const listeners = []; return { addListener(fn) { listeners.push(fn); }, listeners, emit(...args) { return Promise.all(listeners.map(fn => fn(...args))); } }; }
-async function background(settings = {}) {
-  const ports = [], windows = []; const local = { settings };
-  const chrome = { runtime: { id: 'test', getURL: file => 'chrome-extension://test/' + file,
-    onMessage: event(), onStartup: event(), onInstalled: event(), connectNative() {
-      const p = { onMessage: event(), onDisconnect: event(), sent: [], postMessage(m) { this.sent.push(m); }, disconnect() { this.onDisconnect.emit(); } }; ports.push(p); return p;
-    } },
-    storage: { local: { async get() { return local; }, async set(v) { Object.assign(local, v); } }, session: { async get() { return {}; }, async set() {}, async remove() {} }, onChanged: event() },
-    tts: {}, contextMenus: { onClicked: event(), async removeAll() {}, create() {} }, commands: { onCommand: event() },
-    tabs: { async query() { return [{ id: 7 }]; }, async sendMessage() { throw Error('Protected PDF has no content script'); }, async create() {} },
-    windows: { async create(value) { windows.push(value); } } };
-  const context = vm.createContext({ chrome, TextEncoder, TextDecoder, Response, DecompressionStream, AbortController, setTimeout, clearTimeout, URL, crypto: require('node:crypto').webcrypto,
-    fetch: async url => new Response(fs.readFileSync(path.join(root, url.replace('chrome-extension://test/', '')))) });
-  context.importScripts = (...files) => files.forEach(file => vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), context, { filename: file }));
-  vm.runInContext(fs.readFileSync(path.join(root, 'background.js'), 'utf8'), context, { filename: 'background.js' });
-  await tick();
-  function dispatch(message, sender) { return new Promise(resolve => { const keep = chrome.runtime.onMessage.listeners[0](message, sender, resolve); if (!keep) resolve(undefined); }); }
-  return { chrome, ports, windows, dispatch };
-}
+const { background, tick } = require('./background-harness.cjs');
 test('The actual service worker does not permit a page content script to connect or inspect the native host', async () => {
   const h = await background();
   const result = await h.dispatch({ type: 'native-reconnect' }, { id: 'test', url: 'https://example.com/', tab: { id: 7 } });
@@ -72,4 +51,33 @@ test('The precise PDF reader suppresses unrelated native cards while it owns sel
   const p=h.ports[0];await p.onMessage.emit({type:'ready',version:'1.3.4'});await tick();
   await p.onMessage.emit({type:'selection',requestId:'c'.repeat(32),text:'unrelated'});await tick();
   assert.equal(p.sent.at(-1).type,'dismiss');assert.equal(p.sent.filter(x=>x.type==='result').length,0);
+});
+
+test('An HTML speaker click long after lookup keeps the web card and dismisses duplicate native capture',async t=>{
+  for (const url of ['file:///C:/WordLens/example.html','https://example.com/lesson']) {
+    const h=await background({nativeEnabled:true,lookupMode:'auto'});
+    t.after(()=>h.chrome.storage.onChanged.emit({settings:{newValue:{}}},'local'));
+    const sender={id:'test',url,tab:{id:7}};
+    h.chrome.tabs.query=async()=>[{id:7,url}];
+    let visible=true;
+    h.chrome.tabs.sendMessage=async(tab,message)=>{
+      assert.equal(tab,7);assert.equal(message.type,'page-card-state');
+      return visible?{visible:true}:undefined;
+    };
+    const p=h.ports[0];await p.onMessage.emit({type:'ready',version:'1.3.4'});await tick();
+    const entry=await h.dispatch({type:'lookup',word:'Basic'},sender);
+    assert.equal(entry.status,'ok');h.advance(60000);
+    const speech=await h.dispatch({type:'speak',word:'Basic'},sender);
+    assert.equal(speech.status,'ok');assert.deepEqual(h.spoken,['Basic']);
+    for (const [digit,text] of [['d','Basic'],['e','unrelated']]) {
+      await p.onMessage.emit({type:'selection',requestId:digit.repeat(32),text});await tick();
+      assert.equal(p.sent.at(-1).type,'dismiss');
+    }
+    assert.equal(p.sent.filter(x=>x.type==='result').length,0);
+    // Closing the web card (or navigating to a protected viewer) restores native lookup.
+    visible=false;
+    await p.onMessage.emit({type:'selection',requestId:'f'.repeat(32),text:'Basic'});
+    for(let i=0;i<20 && !p.sent.some(x=>x.type==='result');i++)await new Promise(resolve=>setTimeout(resolve,10));
+    assert.equal(p.sent.at(-1).type,'result');assert.equal(p.sent.at(-1).result.query,'basic');
+  }
 });

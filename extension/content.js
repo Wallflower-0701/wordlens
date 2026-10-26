@@ -257,7 +257,14 @@
   });
   chrome.storage.local.get('settings').then(result => { settings = sanitizeSettings(result.settings); ready = true; }).catch(() => { ready = true; });
   chrome.runtime.onMessage.addListener((message, sender, respond) => {
-    if (sender.id !== chrome.runtime.id || message?.type !== 'lookup-selection') return false;
+    if (sender.id !== chrome.runtime.id) return false;
+    if (message?.type === 'page-card-state') {
+      // Reply only from the focused document with a live card. Inactive frames
+      // must not race this response or suppress selection in another app.
+      if (open && host?.isConnected && !host.hidden && document.hasFocus()) respond({ visible: true });
+      return false;
+    }
+    if (message?.type !== 'lookup-selection') return false;
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !normalizeText(selection.toString())) return false;
     inspect({ target: document.activeElement, altKey: false, composedPath: () => [] }, true).then(() => respond({ status: 'handled' }));

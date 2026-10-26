@@ -73,6 +73,11 @@
         try { result = await lookup(input.text); }
         catch { result = { status: 'error', message: '查询失败，请重试。' }; }
         if (ticket !== generation || connected !== port || !active) return;
+        // A web lookup can finish while the native dictionary is still loading.
+        // Check again before displaying a second card, then revalidate the task.
+        const pageVisible = await recent(input.text);
+        if (ticket !== generation || connected !== port || !active) return;
+        if (pageVisible) { active = null; post({ type: 'dismiss' }); return; }
         const queryKey = text => core.dictionaryKey(text) || core.normalizeText(text)?.text.toLowerCase();
         if (result.status === 'ok' && result.query && queryKey(result.query) !== queryKey(input.text))
           result = { status: 'error', message: '查询结果与当前选区不一致，请重新选词。' };

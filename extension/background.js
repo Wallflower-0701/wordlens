@@ -20,6 +20,14 @@ const nativeBridge = WordLensNative.createBridge({ api: chrome, core: WordLensCo
   recent: async text => {
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     if (tab?.url?.split(/[?#]/)[0] === chrome.runtime.getURL('reader.html')) return true;
+    if (tab?.id !== undefined) {
+      try {
+        // The card may have been open for minutes before its speaker is used.
+        // Ask the live page rather than extending a query-time grace period.
+        const card = await chrome.tabs.sendMessage(tab.id, { type: 'page-card-state' });
+        if (card?.visible === true) return true;
+      } catch { /* Protected viewers have no content script; use native lookup. */ }
+    }
     if (!recentPageLookup || Date.now() - recentPageLookup.time > 900 || recentPageLookup.text.toLowerCase() !== text.toLowerCase()) return false;
     return tab?.id === recentPageLookup.tab;
   }
