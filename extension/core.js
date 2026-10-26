@@ -1,7 +1,7 @@
 /* Shared, dependency-free lookup logic. */
 (() => {
   'use strict';
-  const DEFAULTS = Object.freeze({ enabled: true, trigger: 'selection', accent: 'en-GB', onlineTranslation: true, lookupMode: 'auto', nativeEnabled: false });
+  const DEFAULTS = Object.freeze({ enabled: true, trigger: 'selection', accent: 'en-GB', onlineTranslation: true, lookupMode: 'auto', nativeEnabled: false, autoSpeak: false });
   const MAX_TEXT_LENGTH = 2000;
   const LIGATURES = Object.freeze({ 'ﬀ': 'ff', 'ﬁ': 'fi', 'ﬂ': 'fl', 'ﬃ': 'ffi', 'ﬄ': 'ffl', 'ﬅ': 'st', 'ﬆ': 'st' });
   function expandLigatures(value) { return value.replace(/[ﬀ-ﬆ]/g, character => LIGATURES[character] || character); }
@@ -60,7 +60,8 @@
       accent: value?.accent === 'en-US' ? 'en-US' : 'en-GB',
       onlineTranslation: typeof value?.onlineTranslation === 'boolean' ? value.onlineTranslation : DEFAULTS.onlineTranslation,
       lookupMode: ['auto', 'shortcut', 'context', 'copy'].includes(value?.lookupMode) ? value.lookupMode : 'auto',
-      nativeEnabled: value?.nativeEnabled === true
+      nativeEnabled: value?.nativeEnabled === true,
+      autoSpeak: value?.autoSpeak === true
     };
   }
 

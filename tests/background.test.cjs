@@ -53,6 +53,16 @@ test('The precise PDF reader suppresses unrelated native cards while it owns sel
   assert.equal(p.sent.at(-1).type,'dismiss');assert.equal(p.sent.filter(x=>x.type==='result').length,0);
 });
 
+test('Opt-in native word speech flows through the real dictionary and local voice API exactly once',async t=>{
+  const h=await background({nativeEnabled:true,autoSpeak:true});
+  t.after(()=>h.chrome.storage.onChanged.emit({settings:{newValue:{}}},'local'));
+  const p=h.ports[0];await p.onMessage.emit({type:'ready',version:'1.3.4'});await tick();
+  await p.onMessage.emit({type:'selection',requestId:'a'.repeat(32),text:'Basic'});
+  for(let i=0;i<20 && !h.spoken.length;i++)await new Promise(resolve=>setTimeout(resolve,10));
+  assert.deepEqual(h.spoken,['Basic']);assert.equal(p.sent.filter(x=>x.type==='result').length,1);
+  assert.equal(p.sent.filter(x=>x.type==='speech-status').length,1);
+});
+
 test('An HTML speaker click long after lookup keeps the web card and dismisses duplicate native capture',async t=>{
   for (const url of ['file:///C:/WordLens/example.html','https://example.com/lesson']) {
     const h=await background({nativeEnabled:true,lookupMode:'auto'});

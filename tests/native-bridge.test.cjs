@@ -100,6 +100,38 @@ test('Speech is tied to the displayed selection; an unreadable selection shows a
   p.onMessage.emit({ type: 'speak', requestId: id('2') }); await tick(); assert.deepEqual(h.spoken, ['Basic']);
   p.onMessage.emit({ type: 'capture-empty', requestId: id('4') }); await tick(); assert.match(p.sent.at(-1).result.message, /没有读到/); assert.equal(h.queries.length, 1);
 });
+
+test('Native automatic speech reads the selected word once, while phrases and failed lookups stay silent', async t => {
+  const h=harness({lookup:async text=>text==='missing'?{status:'not-found'}:text==='failed'?{status:'error',message:'failed'}:{status:'ok',word:'study',query:text,definitions:['释义'],kind:core.normalizeText(text).kind}});
+  t.after(()=>h.bridge.stop());const p=h.connect();
+  h.bridge.configure({nativeEnabled:true,autoSpeak:true});
+  p.onMessage.emit({type:'selection',requestId:id('a'),text:'studies'});await tick();
+  assert.deepEqual(h.spoken,['studies']);assert.equal(p.sent.filter(x=>x.type==='speech-status').length,1);
+  for(const [digit,text] of [['b','take care of'],['c','This is a sentence.'],['d','missing'],['e','failed']]) {
+    p.onMessage.emit({type:'selection',requestId:id(digit),text});await tick();
+  }
+  assert.deepEqual(h.spoken,['studies']);
+});
+
+test('Turning off automatic speech cancels pending automatic lookup speech and leaves manual speech available', async t => {
+  let release;
+  const h=harness({lookup:()=>new Promise(resolve=>{release=resolve;})});
+  t.after(()=>h.bridge.stop());const p=h.connect();
+  h.bridge.configure({nativeEnabled:true,autoSpeak:true});
+  p.onMessage.emit({type:'selection',requestId:id('a'),text:'Basic'});await tick();
+  h.bridge.configure({nativeEnabled:true,autoSpeak:false});
+  release({status:'ok',word:'Basic',definitions:['基本']});await tick();assert.equal(h.spoken.length,0);
+  p.onMessage.emit({type:'selection',requestId:id('b'),text:'Basic'});await tick();
+  release({status:'ok',word:'Basic',definitions:['基本']});await tick();assert.equal(h.spoken.length,0);
+  p.onMessage.emit({type:'speak',requestId:id('b')});await tick();assert.deepEqual(h.spoken,['Basic']);
+});
+
+test('Native automatic speech does not duplicate the web card owner', async t => {
+  const h=harness({recent:async()=>true});t.after(()=>h.bridge.stop());const p=h.connect();
+  h.bridge.configure({nativeEnabled:true,autoSpeak:true});
+  p.onMessage.emit({type:'selection',requestId:id('a'),text:'Basic'});await tick();
+  assert.equal(h.queries.length,0);assert.equal(h.spoken.length,0);assert.equal(p.sent.at(-1).type,'dismiss');
+});
 test('A missing, incompatible or unresponsive host is not reported connected', async t => {
   const h = harness({ timeout: 15 }); t.after(() => h.bridge.stop());
   h.bridge.configure({ nativeEnabled: true }); h.api.runtime.lastError = { message: 'host not found' }; h.ports[0].onDisconnect.emit();

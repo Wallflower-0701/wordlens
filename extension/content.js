@@ -203,7 +203,10 @@
     position();
     try {
       const result = await chrome.runtime.sendMessage({ type: 'lookup', word });
-      if (ticket === sequence && open) render(result, word);
+      if (ticket === sequence && open) {
+        render(result, word);
+        if (settings.autoSpeak && input.kind === 'word' && result.status === 'ok') void play();
+      }
     } catch {
       if (ticket === sequence && open) render({ status: 'error', message: '插件已更新或连接中断，请刷新网页后重试。' }, word);
     }

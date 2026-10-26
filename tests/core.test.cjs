@@ -101,6 +101,14 @@ test('Unicode PDF ligatures remain the selected word while ambiguous control byt
   assert.equal(core.normalizeText('ﬃ'.repeat(667)),null);
 });
 
+test('Automatic word speech is opt-in and old settings keep the silent lookup default', () => {
+  assert.equal(core.DEFAULTS.autoSpeak,false);
+  for(const settings of [undefined,{}, {enabled:true}, {autoSpeak:false}, {autoSpeak:'true'}, {autoSpeak:1}])
+    assert.equal(core.sanitizeSettings(settings).autoSpeak,false);
+  assert.equal(core.sanitizeSettings({autoSpeak:true,accent:'en-US'}).autoSpeak,true);
+  assert.equal(core.sanitizeSettings({autoSpeak:true,accent:'en-US'}).accent,'en-US');
+});
+
 test('translation chunking respects UTF-8 limits and preserves punctuation and content', () => {
   const encoder = new TextEncoder();
   for (const text of ['... Mr. Smith said: “Hello!” I.e. this is fine.', ('This is a sentence with “quoted” text. ').repeat(40).trim(), 'x'.repeat(1000) + ' end.']) {

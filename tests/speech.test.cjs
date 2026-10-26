@@ -28,6 +28,17 @@ test('regional preferences accept underscore locales and keep a local English fa
   assert.equal(chooseVoice([english], 'en-GB'), english);
 });
 
+test('A delayed voice discovery cannot read an older word after a newer speech request', async () => {
+  let first, calls=0;const spoken=[];
+  const speech=createSpeech({
+    getVoices:done=>{if(++calls===1)first=done;else done([english]);},
+    speak:(text,settings,done)=>{spoken.push(text);settings.onEvent({type:'start'});done();}
+  },{},options);
+  const old=speech.speak('first','en-US');
+  assert.equal((await speech.speak('second','en-US')).status,'ok');
+  first([english]);assert.equal((await old).status,'cancelled');assert.deepEqual(spoken,['second']);
+});
+
 test('explicitly local extension voices work and are routed to their engine', async () => {
   const voice = { voiceName: 'Local engine', lang: 'en_US', remote: false, extensionId: 'local-engine' };
   let actual;

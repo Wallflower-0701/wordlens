@@ -20,6 +20,12 @@
       try { port.postMessage(value); return true; }
       catch { stop(); state = 'missing'; message = '本地辅助组件已断开，请重新连接。'; return false; }
     }
+    async function pronounce(connected, ticket, id) {
+      if (!active || active.id !== id || ticket !== generation || connected !== port) return;
+      let audio;
+      try { audio = await speak(active.text); } catch { audio = { status: 'error', message: '本地发音暂时不可用。' }; }
+      if (ticket === generation && connected === port) post({ type: 'speech-status', requestId: id, message: audio.status === 'ok' ? '本地英语朗读 · 音标以词典为准' : audio.message });
+    }
     function stop() {
       generation++; active = null; clearTimeout(handshake); clearTimeout(recovery);
       const previous = port; port = null; if (previous) { try { previous.disconnect(); } catch {} }
@@ -82,11 +88,10 @@
         if (result.status === 'ok' && result.query && queryKey(result.query) !== queryKey(input.text))
           result = { status: 'error', message: '查询结果与当前选区不一致，请重新选词。' };
         result = { ...result, displayPhonetic: result.phonetic ? core.displayPhonetic(result.phonetic) : (input.kind === 'word' ? '暂无音标' : '英文 → 中文') };
-        post({ type: 'result', requestId: value.requestId, result });
+        if (post({ type: 'result', requestId: value.requestId, result }) && settings.autoSpeak && input.kind === 'word' && result.status === 'ok')
+          await pronounce(connected, ticket, value.requestId);
       } else if (value.type === 'speak' && active?.id === value.requestId) {
-        const id = active.id, ticket = generation; let audio;
-        try { audio = await speak(active.text); } catch { audio = { status: 'error', message: '本地发音暂时不可用。' }; }
-        if (ticket === generation && connected === port) post({ type: 'speech-status', requestId: id, message: audio.status === 'ok' ? '本地英语朗读 · 音标以词典为准' : audio.message });
+        await pronounce(connected, generation, active.id);
       } else if (value.type === 'capture-empty') {
         generation++; active = null;
         if (/^[a-f0-9]{32}$/.test(value.requestId || '')) post({ type: 'result', requestId: value.requestId,
