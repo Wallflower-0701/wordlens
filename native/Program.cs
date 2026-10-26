@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 
 [assembly: AssemblyTitle("WordLens 原页面划词辅助")]
-[assembly: AssemblyVersion("1.3.9.0")]
+[assembly: AssemblyVersion("1.3.12.0")]
 
 namespace WordLens.Native {
   static class Program {
@@ -19,7 +19,7 @@ namespace WordLens.Native {
       if (args.Length == 1 && args[0] == "--self-test") return SelfTests.Run();
       if (args.Length == 2 && args[0] == "--render-preview") return PopupPreview.Run(args[1]);
       if (args.Length == 2 && args[0] == "--install-user") {
-        try { Installer.Install(args[1]); Protocol.Write(Console.OpenStandardOutput(), new { type = "installed", version = "1.3.9", scope = "current-user" }); return 0; }
+        try { Installer.Install(args[1]); Protocol.Write(Console.OpenStandardOutput(), new { type = "installed", version = "1.3.12", scope = "current-user" }); return 0; }
         catch (Exception error) { Protocol.Write(Console.OpenStandardOutput(), new { type = "install-error", message = error.Message }); return 1; }
       }
       if (args.Length > 0 && (args[0] == "--test-host" || Installer.AllowedOrigin(args[0]))) {
@@ -75,7 +75,7 @@ namespace WordLens.Native {
         hookCallback = MouseInput; keyboardCallback = KeyboardInput;
         RefreshHook();
         new Thread(ReadLoop) { IsBackground = true, Name = "WordLens native input" }.Start();
-        Send(new { type = "ready", version = "1.3.9", selectedTextOnly = true, clipboard = "copy-mode-only", automatic = mouseHook != IntPtr.Zero });
+        Send(new { type = "ready", version = "1.3.12", host = Installer.HostName, selectedTextOnly = true, clipboard = "copy-mode-only", automatic = mouseHook != IntPtr.Zero });
         Report("ready", mouseHook == IntPtr.Zero ? "hook-unavailable" : "", null);
       }));
       FormClosed += delegate { alive = false; timer.Stop(); if (mouseHook != IntPtr.Zero) UnhookWindowsHookEx(mouseHook); if (keyboardHook!=IntPtr.Zero) UnhookWindowsHookEx(keyboardHook); if (copyListening) CopySelection.RemoveClipboardFormatListener(Handle); popup.Dispose(); if (!diagnostic) NativeStatus.Write(NativeStatus.Snapshot("disconnected", "", mode, 0, 0, 0)); };

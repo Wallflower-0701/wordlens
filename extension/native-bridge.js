@@ -1,6 +1,6 @@
 (function (root) {
   'use strict';
-  const HOST = 'com.wordlens.selection';
+  const HOST = 'com.wordlens.selection.v2';
   function connectionError(reason) {
     const detail = typeof reason === 'string' ? reason.replace(/[\u0000-\u001f]/g, ' ').slice(0, 300) : '';
     let explanation = '本地辅助组件连接失败';
@@ -40,7 +40,10 @@
     async function received(value, connected) {
       if (connected !== port || !value || typeof value !== 'object') return;
       if (value.type === 'ready') {
-        if (value.version !== '1.3.9') { stop(); state = 'missing'; message = '本地辅助版本不匹配，请安装 / 更新 1.3.9 组件。'; return; }
+        if (value.version !== '1.3.12') {
+          const actual = typeof value.version === 'string' && /^[a-zA-Z0-9. _-]{1,48}$/.test(value.version) ? value.version : '未知';
+          stop(); state = 'missing'; message = `本地辅助版本不匹配（浏览器收到：${actual}；需要：1.3.12）。请更新组件后重新连接。`; return;
+        }
         clearTimeout(handshake); state = 'ready'; message = settings.lookupMode === 'copy' ? 'PDF 兼容取词已连接 · 选中英文后按 Ctrl+C' : '原页面增强已连接 · 只读取当前选区';
         if (value.automatic === false && settings.lookupMode === 'auto') message = '本地辅助已连接，但鼠标取词不可用；可切换快捷键模式。';
         post(configuration()); return;

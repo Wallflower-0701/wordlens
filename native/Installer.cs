@@ -12,7 +12,7 @@ using Microsoft.Win32;
 
 namespace WordLens.Native {
   sealed class Installer : Form {
-    public const string HostName = "com.wordlens.selection";
+    public const string HostName = "com.wordlens.selection.v2";
     readonly TextBox extensionId;
     readonly Label status;
     public Installer(string id) {
@@ -43,7 +43,7 @@ namespace WordLens.Native {
     public static void Install(string id) {
       if (!Regex.IsMatch(id ?? "", "^[a-p]{32}$")) throw new InvalidOperationException("请输入插件面板显示的 32 位扩展 ID。");
       Directory.CreateDirectory(DirectoryPath);
-      string executable = Path.Combine(DirectoryPath, "WordLens.Native.exe");
+      string executable = Path.Combine(DirectoryPath, "WordLens.Native-v2.exe");
       string running = Assembly.GetExecutingAssembly().Location;
       if (!String.Equals(Path.GetFullPath(running), Path.GetFullPath(executable), StringComparison.OrdinalIgnoreCase)) File.Copy(running, executable, true);
       string manifest = Path.Combine(DirectoryPath, HostName + ".json");

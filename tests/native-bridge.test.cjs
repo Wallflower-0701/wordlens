@@ -9,6 +9,7 @@ function harness(options = {}) {
   const ports = [], queries = [], spoken = [];
   const api = { runtime: { connectNative(name) {
     assert.equal(name, HOST);
+    assert.equal(name, 'com.wordlens.selection.v2');
     const p = { onMessage: event(), onDisconnect: event(), sent: [], disconnected: false,
       postMessage(value) { if (this.disconnected) throw Error('closed'); this.sent.push(value); },
       disconnect() { this.disconnected = true; this.onDisconnect.emit(); } };
@@ -18,7 +19,7 @@ function harness(options = {}) {
     lookup: async text => { queries.push(text); return options.lookup ? options.lookup(text) : { status: 'ok', word: text, phonetic: "'test", definitions: ['测试'], kind: 'word' }; },
     speak: async text => { spoken.push(text); return { status: 'ok' }; },
     recent: options.recent, timeout: options.timeout ?? 1000, retryDelay: options.retryDelay ?? 500 });
-  return { bridge, api, ports, queries, spoken, connect() { bridge.configure({ nativeEnabled: true, lookupMode: 'auto' }); const p = ports.at(-1); p.onMessage.emit({ type: 'ready', version: '1.3.9', automatic: true }); return p; } };
+  return { bridge, api, ports, queries, spoken, connect() { bridge.configure({ nativeEnabled: true, lookupMode: 'auto' }); const p = ports.at(-1); p.onMessage.emit({ type: 'ready', version: '1.3.12', automatic: true }); return p; } };
 }
 test('Modes are sanitized, default to ordinary auto lookup and require opt-in for the native helper', () => {
   assert.equal(core.sanitizeSettings().lookupMode, 'auto'); assert.equal(core.sanitizeSettings().nativeEnabled, false);
@@ -99,7 +100,7 @@ test('Context mode disconnects native monitoring; reconnect does not revive an o
   const h = harness(); t.after(() => h.bridge.stop()); const old = h.connect();
   h.bridge.configure({ nativeEnabled: true, lookupMode: 'context' }); assert.equal(old.disconnected, true);
   assert.equal(h.bridge.status().status, 'disabled'); assert.equal(h.bridge.capture(), false);
-  const next = h.connect(); old.onMessage.emit({ type: 'ready', version: '1.3.9' });
+  const next = h.connect(); old.onMessage.emit({ type: 'ready', version: '1.3.12' });
   next.onMessage.emit({ type: 'selection', requestId: id('1'), text: 'Basic' }); await tick();
   assert.equal(old.sent.filter(x => x.type === 'result').length, 0); assert.equal(next.sent.at(-1).type, 'result');
 });
@@ -165,7 +166,8 @@ test('The old mouse-hook helper is rejected so the new click gate cannot silentl
   h.bridge.configure({ nativeEnabled: true }); const p = h.ports[0];
   p.onMessage.emit({ type: 'ready', version: '1.3.4' });
   assert.equal(h.bridge.status().status, 'missing'); assert.equal(p.disconnected, true);
-  assert.match(h.bridge.status().message, /1\.3\.9/);
+  assert.match(h.bridge.status().message, /1\.3\.12/);
+  assert.match(h.bridge.status().message, /浏览器收到：1\.3\.4/);
 });
 
 test('Web ownership disables native capture at the host and rejects all late selection paths until released', async t => {
@@ -240,7 +242,7 @@ test('A stuck provider restarts with a new port and discards the previous lookup
   assert.equal(old.disconnected,true); assert.equal(h.bridge.status().status,'connecting');
   await new Promise(resolve=>setTimeout(resolve,10));
   assert.equal(h.ports.length,2); const next=h.ports[1];
-  next.onMessage.emit({type:'ready',version:'1.3.9'});
+  next.onMessage.emit({type:'ready',version:'1.3.12'});
   release({status:'ok',word:'Basic',definitions:['旧结果']}); await tick();
   assert.equal(h.bridge.status().status,'ready'); assert.equal(old.sent.filter(x=>x.type==='result').length,0);
   assert.equal(next.sent.filter(x=>x.type==='result').length,0);
@@ -251,10 +253,10 @@ test('Provider restart is bounded and switching off cancels a scheduled restart'
   for (let i=0;i<3;i++) {
     h.ports.at(-1).onMessage.emit({type:'capture-status',state:'no-selection',reason:'provider-timeout'});
     await new Promise(resolve=>setTimeout(resolve,10));
-    if (i<2) h.ports.at(-1).onMessage.emit({type:'ready',version:'1.3.9'});
+    if (i<2) h.ports.at(-1).onMessage.emit({type:'ready',version:'1.3.12'});
   }
   assert.equal(h.ports.length,3); assert.equal(h.bridge.status().status,'missing');
-  h.bridge.configure({nativeEnabled:true},true); h.ports.at(-1).onMessage.emit({type:'ready',version:'1.3.9'});
+  h.bridge.configure({nativeEnabled:true},true); h.ports.at(-1).onMessage.emit({type:'ready',version:'1.3.12'});
   h.ports.at(-1).onMessage.emit({type:'capture-status',state:'no-selection',reason:'provider-timeout'});
   h.bridge.configure({nativeEnabled:false}); await new Promise(resolve=>setTimeout(resolve,10));
   assert.equal(h.ports.length,4); assert.equal(h.bridge.status().status,'disabled');
@@ -269,7 +271,7 @@ test('A selection mismatch has a specific message and never performs a lookup', 
 test('Copy mode reports its trigger and refuses to claim ready when the copy listener failed', t => {
   const h=harness(); t.after(()=>h.bridge.stop());
   h.bridge.configure({nativeEnabled:true,lookupMode:'copy'}); const p=h.ports[0];
-  p.onMessage.emit({type:'ready',version:'1.3.9'});
+  p.onMessage.emit({type:'ready',version:'1.3.12'});
   assert.match(h.bridge.status().message,/Ctrl\+C/); assert.equal(p.sent[0].mode,'copy');
   p.onMessage.emit({type:'configured',copyAvailable:false});
   assert.equal(h.bridge.status().status,'missing'); assert.equal(p.disconnected,true);

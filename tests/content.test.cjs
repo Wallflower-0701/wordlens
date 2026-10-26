@@ -69,7 +69,7 @@ test('Real content and worker suppress native mouse-up capture after both speech
   const { background, tick } = require('./background-harness.cjs');
   const worker = await background({ nativeEnabled: true });
   t.after(() => worker.chrome.storage.onChanged.emit({ settings: { newValue: {} } }, 'local'));
-  const native = worker.ports[0]; await native.onMessage.emit({ type: 'ready', version: '1.3.9' });
+  const native = worker.ports[0]; await native.onMessage.emit({ type: 'ready', version: '1.3.12' });
   const h = await page(worker); await h.lookup(); worker.advance(60000);
   await h.card().shadowRoot.querySelector('.speak').emit('click');
   await native.onMessage.emit({ type: 'selection', requestId: 'a'.repeat(32), text: 'Basic' }); await tick();
